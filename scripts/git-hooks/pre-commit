@@ -1,0 +1,16 @@
+#!/bin/sh
+# 把各 demo 的前端源 <demo>/static/index.html 同步到 GitHub Pages 发布目录 docs/<demo>/index.html
+# 随仓库分发；每人 clone 后启用一次： git config core.hooksPath scripts/git-hooks
+# 新 demo 只要遵循 <demo>/static/index.html 约定即自动纳入，无需改本脚本。
+for src in */static/index.html; do
+  [ -f "$src" ] || continue
+  demo=${src%/static/index.html}
+  [ "$demo" = "docs" ] && continue
+  dst="docs/$demo/index.html"
+  if ! cmp -s "$src" "$dst" 2>/dev/null; then
+    mkdir -p "docs/$demo"
+    cp "$src" "$dst"
+    git add "$dst"
+    echo "[pre-commit] synced $src -> $dst"
+  fi
+done

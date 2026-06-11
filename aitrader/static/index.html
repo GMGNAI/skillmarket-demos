@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trader - 自动筛选，一键成交，持仓监控</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0907;--ink2:#0f0d0a;--panel:#14110b;--panel2:#191510;--raise:#211c14;
+  --line:#272219;--line2:#39322560;--paper:#ece3d0;--paper2:#cfc6b1;
+  --dim:#8a8268;--dim2:#5b5443;
+  --lime:#c8f24a;--lime-d:#7e992a;--clay:#ec5a40;--amber:#f0a93b;--teal:#5fb4c4;--blue:#7aa7ff;
+  --mono:'IBM Plex Mono',monospace;--disp:'Bricolage Grotesque',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--mono);font-size:13px;color:var(--paper);overflow:hidden;
+  background:radial-gradient(140% 70% at 12% -10%,#16130c 0%,transparent 55%),
+             radial-gradient(120% 80% at 92% 0%,#131210 0%,transparent 50%),var(--ink);}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:90;opacity:.045;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+.app{height:100vh;display:flex;flex-direction:column;padding:10px;gap:9px;min-width:1160px}
+.demobar{display:none;flex-shrink:0;background:linear-gradient(90deg,#f0a93b1f,#c8f24a14);border:1px solid #f0a93b55;border-radius:9px;padding:7px 14px;font-size:11.5px;color:var(--amber);text-align:center;letter-spacing:.02em}
+.demobar.on{display:block}
+.demobar b{color:var(--paper)}
+.publicbar{background:linear-gradient(90deg,#5ad6ff1c,#c8f24a14);border-color:#5ad6ff55;color:#7fd9ff}
+/* 公开演示只读：藏掉一切写操作入口（买入/配置/切源/切链/持仓监控/买入数量）。
+   后端已对写接口 403，这里再从 UI 收掉，避免访客点了报错。 */
+body.publicro .buybtn,
+body.publicro #gearBtn,
+body.publicro #pipeGear,
+body.publicro .seg2,
+body.publicro .amt-wrap,
+body.publicro #chainPillWrap,
+body.publicro #escCard{display:none !important}
+
+/* status strip */
+.bar{display:flex;align-items:center;justify-content:space-between;gap:18px;
+  border:1px solid var(--line);border-radius:13px;padding:11px 18px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));flex-shrink:0}
+.bar-l{display:flex;align-items:center;gap:13px}
+.logo{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--lime);color:var(--ink);animation:beat 2.6s ease-in-out infinite}
+@keyframes beat{0%,100%{box-shadow:0 0 14px #c8f24a44}50%{box-shadow:0 0 28px #c8f24a99}}
+.logo svg{width:20px;height:20px}
+.bar h1{font-family:var(--disp);font-weight:800;font-size:19px;letter-spacing:-.01em;line-height:1}
+.bar h1 i{color:var(--lime);font-style:normal;margin:0 6px}
+.bar .tag{font-size:10px;color:var(--dim);letter-spacing:.16em;margin-top:4px}
+.bar-r{display:flex;align-items:center;gap:9px}
+.pill{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:9px;padding:7px 11px;background:var(--ink2)}
+.chainpill{position:relative;cursor:pointer}
+.chainpill:hover{border-color:var(--lime)}
+.chainpill .caret{color:var(--dim2);font-size:9px}
+.chainmenu{position:absolute;top:calc(100% + 6px);left:0;min-width:100%;background:var(--panel2,#15150f);border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 28px #000b;padding:4px;display:none;z-index:120}
+.chainmenu.on{display:block}
+.chainmenu>div{padding:7px 12px;border-radius:6px;font-family:var(--mono);font-size:12px;color:var(--paper2);white-space:nowrap}
+.chainmenu>div:hover{background:var(--ink);color:var(--lime)}
+.chainmenu>div.sel{color:var(--lime)}
+.pill .k{color:var(--dim2);font-size:9px;letter-spacing:.13em}
+.pill .v{font-size:13px;font-weight:600;display:block;margin-top:1px}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot.live{background:var(--lime);box-shadow:0 0 8px var(--lime);animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.clock{font-family:var(--disp);font-weight:700;font-size:21px;letter-spacing:.02em}
+.mode{color:var(--amber);border-color:#f0a93b44;background:#f0a93b12}.mode .v{color:var(--amber)}
+.kill-pill .v{color:var(--dim2)}.kill-pill.on{border-color:var(--clay)}.kill-pill.on .v{color:var(--clay)}
+.seg2{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--ink2)}
+.seg2 button{background:transparent;border:0;color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.08em;padding:8px 11px;cursor:pointer}
+.seg2 button.on{background:var(--lime);color:var(--ink);font-weight:700}
+.gear{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--ink2);color:var(--paper2);display:grid;place-items:center;cursor:pointer}
+.gear:hover{border-color:var(--lime);color:var(--lime)}.gear svg{width:16px;height:16px}
+.langbtn{height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--ink2);color:var(--paper2);display:grid;place-items:center;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.langbtn:hover{border-color:var(--lime);color:var(--lime)}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;flex-shrink:0}
+.kpi{border:1px solid var(--line);border-radius:12px;padding:9px 14px;background:linear-gradient(180deg,var(--panel),var(--ink2));position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ac);opacity:.5}
+.kpi.alert{border-color:var(--clay)}.kpi.alert::after{opacity:1;animation:blink 1.2s infinite}
+.kpi .k{color:var(--dim);font-size:9.5px;letter-spacing:.1em;display:flex;align-items:center;gap:5px}
+.kpi .k svg{width:12px;height:12px;color:var(--ac)}
+.kpi .v{font-family:var(--disp);font-weight:800;font-size:26px;line-height:1.1;margin-top:7px}
+.kpi .v small{font-size:13px;color:var(--dim);font-weight:600}
+.kpi .sub{font-size:9.5px;color:var(--dim2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.flash{animation:fl .6s ease}@keyframes fl{0%{color:var(--lime)}100%{}}
+
+/* grid */
+.grid{flex:1;display:grid;grid-template-columns:1fr 372px;gap:9px;min-height:0}
+.col{display:flex;flex-direction:column;gap:9px;min-height:0}
+.card{border:1px solid var(--line);border-radius:13px;background:linear-gradient(180deg,var(--panel2),var(--panel));display:flex;flex-direction:column;min-height:0}
+.card>h3{font-family:var(--disp);font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line);color:var(--paper2);flex-shrink:0;letter-spacing:.01em}
+.card>h3 svg{width:14px;height:14px;color:var(--lime)}
+.card>h3 .scanning{margin-left:auto;font-size:9.5px;color:var(--lime);letter-spacing:.14em;opacity:0;transition:.2s}
+.logwrap>h3 .logtog{margin-left:auto;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);color:var(--dim);display:grid;place-items:center;cursor:pointer;transition:.15s;flex-shrink:0}
+.logwrap>h3 .logtog:hover{border-color:var(--lime);color:var(--lime)}
+.logwrap>h3 .logtog svg{width:14px;height:14px;transition:transform .18s}
+.logwrap.collapsed>h3 .logtog svg{transform:rotate(180deg)}
+.logwrap.collapsed>.body{display:none}
+.logwrap.collapsed{flex:0 0 auto;height:auto}   /* 覆盖固定 166px：收起后只剩标题，高度归零给筛选结果 */
+.amt-wrap{margin-left:12px;display:flex;align-items:center;gap:5px;font-weight:400;flex-shrink:0}
+.amt-lbl{font-family:var(--mono);font-size:9px;color:var(--dim2);letter-spacing:.05em}
+.amt-in{width:58px;height:22px;background:var(--ink);border:1px solid var(--line);color:var(--paper);border-radius:6px;padding:0 7px;font-family:var(--mono);font-size:11px}
+.amt-in:focus{outline:none;border-color:var(--lime)}
+.amt-in::-webkit-outer-spin-button,.amt-in::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.h3gear{margin-left:10px;width:24px;height:24px;border-radius:7px;border:1px solid var(--line);color:var(--dim);display:grid;place-items:center;cursor:pointer;transition:.15s;flex-shrink:0}
+.h3gear:hover{border-color:var(--lime);color:var(--lime)}.h3gear svg{width:13px;height:13px}
+.card>h3 .scanning.on{opacity:1}
+.card>h3 .cnt{margin-left:auto;font-size:10px;color:var(--dim);font-family:var(--mono);font-weight:400}
+.card .body{flex:1;overflow:auto;min-height:0}
+
+/* pipeline table */
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{position:sticky;top:0;background:var(--panel);color:var(--dim);font-weight:500;font-size:9.5px;letter-spacing:.1em;text-align:left;padding:5px 10px;border-bottom:1px solid var(--line);z-index:2}
+tbody tr{border-bottom:1px solid var(--line);cursor:pointer;transition:background .12s}
+tbody tr:hover{background:var(--panel)}
+tbody tr.sel{background:#c8f24a09;box-shadow:inset 3px 0 0 var(--rc)}
+tbody tr.act{background:#c8f24a07}
+tbody tr.ping{animation:ping .7s ease}@keyframes ping{0%{background:#c8f24a18}100%{}}
+td{padding:5px 10px;vertical-align:middle}
+.sym{font-family:var(--disp);font-weight:800;font-size:14px}
+.sym small{display:block;font-family:var(--mono);font-weight:400;font-size:8.5px;color:var(--dim2);margin-top:1px}
+.sym .tk{cursor:pointer;transition:color .12s}
+.sym .tk:hover{color:var(--lime)}
+.carow{display:flex;align-items:center;gap:7px;margin-top:1px}
+.ca{font-family:var(--mono);font-weight:400;font-size:8.5px;color:var(--dim2);text-decoration:none;border-bottom:1px dashed transparent;transition:.15s}
+.ca:hover{color:var(--lime);border-bottom-color:var(--lime)}
+.age{font-family:var(--mono);font-weight:400;font-size:8.5px;color:var(--dim);line-height:14px}
+.age.fresh{color:var(--lime)}
+.xbtn{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--dim2);cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;flex-shrink:0;transition:.12s}
+.xbtn:hover{border-color:var(--clay);color:var(--clay)}
+.inj{display:inline-flex;align-items:center;gap:3px;color:var(--amber);font-size:8px;font-weight:600;margin-left:5px;border:1px solid #f0a93b44;background:#f0a93b14;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
+.gates{display:flex;gap:4px}
+.pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
+.pip svg{width:11px;height:11px}
+.pip.pass{color:var(--lime);border-color:#c8f24a38;background:#c8f24a0d}
+.pip.fail{color:#fff;border-color:var(--rc);background:var(--rc)}
+.pip.skip{opacity:.3}
+.pip{cursor:help;transition:border-color .1s,box-shadow .1s}
+.pip:hover{border-color:var(--lime);opacity:1}
+.tip{position:fixed;z-index:200;max-width:340px;background:var(--panel2,#15150f);border:1px solid var(--line);color:var(--paper);font-family:var(--mono);font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 10px 28px #000b;pointer-events:none;opacity:0;transition:opacity .07s}
+.tip.on{opacity:1}
+.has-tip{cursor:help;text-decoration:underline dotted var(--dim2);text-underline-offset:3px}
+.m{font-weight:600}.m.bad{color:var(--clay)}.m.warn{color:var(--amber)}
+.vd{font-weight:700;font-size:10px;padding:3px 8px;border-radius:6px;letter-spacing:.04em}
+.vd.pass{color:var(--lime);background:#c8f24a14;border:1px solid #c8f24a40}
+.vd.watch{color:var(--amber);background:#f0a93b14;border:1px solid #f0a93b40}
+.vd.reject{color:var(--clay);background:#ec5a4014;border:1px solid #ec5a4040}
+.pri{font-family:var(--disp);font-weight:800;font-size:15px}
+.pri small{font-size:9px;color:var(--dim2);font-weight:400;display:block}
+.pri.hi{color:var(--lime)}.pri.mid{color:var(--amber)}
+.buybtn{font-family:var(--mono);font-weight:700;font-size:11px;border:0;border-radius:8px;padding:7px 12px;background:var(--lime);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.buybtn svg{width:12px;height:12px}
+.buybtn:hover{filter:brightness(1.08)}
+.buybtn.warn{background:var(--amber)}
+.rb{font-weight:700;font-size:10.5px;letter-spacing:.05em;padding:4px 9px;border-radius:7px;white-space:nowrap;color:var(--rc);border:1px solid var(--rc);background:color-mix(in srgb,var(--rc) 12%,transparent)}
+
+/* detail strip */
+.detail{flex-shrink:0;border-top:1px solid var(--line);padding:12px 16px;display:flex;gap:18px;align-items:center;background:var(--ink2)}
+.detail .dl{flex-shrink:0}.detail .dl h4{font-family:var(--disp);font-weight:800;font-size:17px}
+.detail .dl .rb,.detail .dl .buybtn{margin-top:6px;display:inline-flex}
+.detail .dr{flex:1;font-size:11.5px;line-height:1.55}
+.detail .dr .lab{color:var(--dim);font-size:9.5px;letter-spacing:.1em;margin-bottom:4px}
+.detail .dr .clay{color:var(--clay)}.detail .dr .lime{color:var(--lime)}.detail .dr b{font-weight:600}
+
+/* escape monitor */
+.pos{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.pos.esc{background:#ec5a400d;box-shadow:inset 3px 0 0 var(--clay)}
+.pos .top{display:flex;align-items:center;gap:9px}
+.pos .ps{font-family:var(--disp);font-weight:800;font-size:14px}
+.pos .ps small{font-family:var(--mono);font-weight:400;font-size:8.5px;color:var(--dim2);display:block}
+.pos .pnl{margin-left:auto;font-weight:700;font-size:13px}.pnl.up{color:var(--lime)}.pnl.dn{color:var(--clay)}
+.pos .px{display:block;font-family:var(--mono);font-size:9px;color:var(--dim2);margin-top:2px}
+/* 持仓卡片：左侧筛选判定为非全绿/掉榜 → 弱红底，首次进入闪一下 */
+.pos.falert{background:rgba(214,90,70,.10)}
+@keyframes falertflash{0%{background:rgba(214,90,70,.42)}100%{background:rgba(214,90,70,.10)}}
+.pos.falert.flash{animation:falertflash .9s ease-out}
+/* 筛选行：该币已在持仓监控 → Ticker 右侧雷达转圈 */
+.radar{display:inline-block;width:11px;height:11px;border-radius:50%;border:1.5px solid var(--lime);border-right-color:transparent;animation:radarspin .9s linear infinite;vertical-align:middle;margin-left:7px;cursor:help}
+@keyframes radarspin{to{transform:rotate(360deg)}}
+/* TOKEN 旁「只看持仓」过滤图标 */
+.tokf{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;border:1px solid var(--line);color:var(--dim2);cursor:pointer;vertical-align:middle;margin-left:6px;transition:.12s}
+.tokf:hover{border-color:var(--lime);color:var(--lime)}
+.tokf.on{color:var(--clay);border-color:var(--clay);background:rgba(214,90,70,.14)}
+.tokf svg{width:11px;height:11px}
+/* 骨架 loading（刷新时筛选结果占位，不假写代币） */
+.skelrow td{padding:15px 12px;border-bottom:1px solid var(--line)}
+.skel-bar{height:15px;border-radius:7px;background:linear-gradient(90deg,#ffffff06,#ffffff16,#ffffff06);background-size:200% 100%;animation:shimmer 1.25s ease-in-out infinite}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.pos .escbtn{border:0;border-radius:7px;padding:6px 10px;font-family:var(--mono);font-weight:700;font-size:10.5px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;background:var(--raise);color:var(--paper2);border:1px solid var(--line)}
+.pos .escbtn svg{width:12px;height:12px}
+.pos.esc .escbtn{background:var(--clay);color:#fff;border-color:var(--clay);animation:beat 1.3s infinite}
+.sev{display:flex;align-items:center;gap:8px}
+.sev .b{flex:1;height:6px;border-radius:4px;background:var(--ink);border:1px solid var(--line);overflow:hidden}
+.sev .b i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--lime-d),var(--lime));transition:width .8s cubic-bezier(.2,.7,.3,1)}
+.sev .b i.hot{background:linear-gradient(90deg,#a44,var(--clay))}
+.sev .lv{font-size:9px;color:var(--dim);letter-spacing:.08em;width:62px;text-align:right}
+.sigs{display:flex;flex-direction:column;gap:3px}
+.sig{font-size:10px;color:var(--dim);display:flex;align-items:center;gap:5px}
+.sig.hot{color:var(--clay)}.sig svg{width:10px;height:10px;flex-shrink:0}
+.posempty{padding:26px 16px;text-align:center;color:var(--dim2);font-size:11px;line-height:1.7}
+
+/* funnel */
+.funnel{padding:9px 14px;display:flex;flex-direction:column;gap:5px}
+.fn{display:grid;grid-template-columns:70px 1fr 30px;align-items:center;gap:9px;font-size:10.5px}
+.fn .lab{color:var(--paper2);display:flex;align-items:center;gap:5px}.fn .lab svg{width:11px;height:11px;color:var(--dim)}
+.fn .track{height:15px;border-radius:5px;background:var(--ink);border:1px solid var(--line);overflow:hidden;position:relative}
+.fn .track i{display:block;height:100%;background:linear-gradient(90deg,var(--lime-d),var(--lime));width:0;transition:width .9s cubic-bezier(.2,.7,.3,1);opacity:.85}
+.fn .track i.ml{background:linear-gradient(90deg,#4a7,var(--teal))}
+.fn .track .kil{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:9px;color:var(--clay);font-weight:600}
+.fn .n{text-align:right;font-weight:700;font-family:var(--disp)}
+.riskmini{border-top:1px solid var(--line);padding:11px 15px;display:flex;flex-direction:column;gap:9px}
+.rkrow .h{display:flex;justify-content:space-between;font-size:10px;margin-bottom:5px}
+.rkrow .h span{color:var(--dim)}.rkrow .h b.hot{color:var(--clay)}
+.rkrow .t{height:6px;border-radius:4px;background:var(--ink);border:1px solid var(--line);overflow:hidden}
+.rkrow .t i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--lime-d),var(--lime));width:0;transition:width 1s cubic-bezier(.2,.7,.3,1)}
+.rkrow .t i.hot{background:linear-gradient(90deg,#a44,var(--clay))}
+
+/* log */
+.logwrap{height:166px;flex-shrink:0}
+.logfeed{font-size:11.5px;padding:6px 10px}
+.lg{display:grid;grid-template-columns:90px 64px 104px 1fr;gap:10px;align-items:center;padding:4px 6px;border-radius:6px;animation:slidein .35s ease}
+.lg:hover{background:var(--panel)}
+@keyframes slidein{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+.lg .ts{color:var(--dim2)}.lg .a{font-weight:700;letter-spacing:.05em}
+.lg .s{color:var(--paper);font-weight:600}.lg .r{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px}::-webkit-scrollbar-track{background:transparent}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:#000a;backdrop-filter:blur(3px);z-index:100;display:none;align-items:center;justify-content:center}
+.scrim.on{display:flex}
+.modal{width:520px;max-width:92vw;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel2),var(--panel));box-shadow:0 30px 80px #000a}
+.modal h2{font-family:var(--disp);font-weight:800;font-size:17px;padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
+.modal h2 svg{width:16px;height:16px;color:var(--lime)}
+.modal h2 .x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:22px;line-height:1}.modal h2 .x:hover{color:var(--paper)}
+.mbody{padding:18px 20px;display:flex;flex-direction:column;gap:15px}
+.fld label{display:block;font-size:10px;letter-spacing:.12em;color:var(--dim);margin-bottom:6px}
+.fld input,.fld textarea,.fld select{width:100%;background:var(--ink);border:1px solid var(--line);color:var(--paper);border-radius:9px;padding:10px 12px;font-family:var(--mono);font-size:12px}
+.fld textarea{min-height:70px;resize:vertical}
+.fld input:focus,.fld textarea:focus,.fld select:focus{outline:none;border-color:var(--lime)}
+.fld .hint{font-size:10px;color:var(--dim2);margin-top:5px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mwarn{font-size:10.5px;color:var(--amber);background:#f0a93b10;border:1px solid #f0a93b33;border-radius:9px;padding:9px 12px;line-height:1.5}
+.mwarn.danger{color:var(--clay);background:#ec5a4010;border-color:#ec5a4033}
+.mfoot{display:flex;align-items:center;gap:12px;padding:16px 20px;border-top:1px solid var(--line)}
+.mbtn{background:var(--lime);color:var(--ink);border:0;border-radius:9px;padding:10px 16px;font-family:var(--mono);font-weight:700;font-size:12px;cursor:pointer}
+.mbtn:hover{filter:brightness(1.06)}.mbtn:disabled{opacity:.4;cursor:not-allowed}
+.mbtn.ghost{background:transparent;border:1px solid var(--line);color:var(--paper2)}
+.mbtn.danger{background:var(--clay);color:#fff}
+.savestate{font-size:11px;color:var(--dim)}
+.tg{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:12px}
+.tg input{display:none}.tg .tr{width:42px;height:23px;background:#2a241a;border-radius:99px;position:relative;transition:.15s;border:1px solid var(--line)}
+.tg .kn{position:absolute;top:2px;left:2px;width:17px;height:17px;background:var(--paper);border-radius:50%;transition:.15s}
+.tg input:checked+.tr{background:var(--clay)}.tg input:checked+.tr .kn{left:21px}
+.exitplan{font-size:11px;color:var(--paper2);background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:11px 13px;line-height:1.7}
+.exitplan b{color:var(--lime)}
+.szrow{display:flex;align-items:center;gap:10px}.szrow input{flex:1}
+.szrow .unit{color:var(--dim);font-size:11px}
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:120;color:#fff;font-size:12px;font-weight:600;padding:10px 16px;border-radius:9px;box-shadow:0 10px 30px #000a;display:none;max-width:80vw}
+.toast.on{display:block;animation:slidein .25s ease}
+.toast.ok{background:var(--lime-d)}.toast.err{background:var(--clay)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="app">
+
+  <div class="demobar" id="demoBar" data-i18n="demobar"></div>
+  <div class="demobar publicbar" id="publicBar" data-i18n="publicbar"></div>
+
+  <div class="bar">
+    <div class="bar-l">
+      <div class="logo" id="ic-logo"></div>
+      <div><h1>AI&nbsp;TRADER<i>//</i><span data-i18n="h1_suffix">筛选 + 一键成交</span></h1><div class="tag" data-i18n="tag">确定性规则抓全 · ML 砍狠 · LLM 只解释幸存者 · 你按下成交</div></div>
+    </div>
+    <div class="bar-r">
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="pill"><span class="dot live"></span><div><span class="k">MCP</span><span class="v" id="mcpPill" style="color:var(--amber)">DEMO</span></div></div>
+      <div class="pill chainpill" id="chainPillWrap" data-i18n-title="chain_title"><div><span class="k">CHAIN</span><span class="v" id="chainPill">SOL</span></div><span class="caret">▾</span>
+        <div class="chainmenu" id="chainMenu">
+          <div data-ch="sol" onclick="switchChain('sol')">SOL</div>
+          <div data-ch="bsc" onclick="switchChain('bsc')">BSC</div>
+          <div data-ch="base" onclick="switchChain('base')">Base</div>
+          <div data-ch="eth" onclick="switchChain('eth')">ETH</div>
+        </div>
+      </div>
+      <div class="pill"><div><span class="k">P50 LAT</span><span class="v" id="lat">182ms</span></div></div>
+      <div class="pill mode" id="modePillWrap" style="cursor:help" data-i18n-tip="mode_tip"><span class="dot" style="background:var(--amber)"></span><div><span class="k">MODE</span><span class="v" id="modePill">模拟盘</span></div></div>
+      <div class="seg2"><button id="srcDemo" class="on" onclick="setSource('demo')">DEMO</button><button id="srcBe" onclick="setSource('backend')" data-i18n="src_backend">本地后端</button></div>
+      <div class="langbtn" id="langBtn" data-i18n-title="lang_title" onclick="switchLang()">中文</div>
+      <div class="gear" id="gearBtn" data-i18n-title="gear_title"></div>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="card" style="flex:1">
+        <h3 id="ic-pipe"><span data-i18n="pipe_h3">筛选结果 · 待你决策</span><span class="scanning" id="scanning" data-i18n="scanning">◢ 扫描中…</span><span class="amt-wrap" data-i18n-title="amt_title"><span class="amt-lbl" data-i18n="amt_lbl">买入</span><input id="amtInput" class="amt-in" type="number" step="0.01" min="0" value="0.01" oninput="onAmt(this)"><span class="amt-lbl" id="amtUnit">SOL</span></span><span class="h3gear" id="pipeGear" data-i18n-title="pipegear_title"></span></h3>
+        <div class="body">
+          <table>
+            <thead><tr>
+              <th><span data-i18n="th_token">TOKEN</span> <span class="tokf" id="tokFilter"></span></th><th data-i18n="th_pipe">规则→排序→LLM</th><th data-i18n="th_safe">安全</th><th>BUND</th><th>DEV</th><th>T10</th><th data-i18n="th_smart">聪明钱/KOL</th><th data-i18n="th_timing">时机</th><th>LLM</th><th data-i18n="th_pri">优先级</th><th data-i18n="th_dec">决策</th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="detail" id="detail"></div>
+      </div>
+      <div class="card logwrap">
+        <h3 id="ic-log"><span data-i18n="log_h3">实时决策日志 · trade_decisions.jsonl</span><span class="logtog" id="logTog" data-i18n-title="logtog_title"></span></h3>
+        <div class="body logfeed" id="logfeed"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card" style="flex:1.1" id="escCard">
+        <h3 id="ic-esc"><span data-i18n="esc_h3">持仓逃生监控</span> <span class="cnt" id="escCnt"></span></h3>
+        <div class="body" id="positions"></div>
+      </div>
+      <div class="card">
+        <h3 id="ic-funnel"><span data-i18n="funnel_h3">闸门漏斗 · </span><span id="funnelSub"></span></h3>
+        <div class="funnel" id="funnel"></div>
+        <div class="riskmini" id="riskmini"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- config modal -->
+<div class="scrim" id="cfgScrim">
+  <div class="modal">
+    <h2><span id="ic-cog"></span><span data-i18n="cfg_h2">配置 · GMGN 凭据</span><span class="x" onclick="closeCfg()">×</span></h2>
+    <div class="mbody">
+      <div class="fld"><label>GMGN API KEY</label><input id="apiKey" type="password" data-i18n-ph="cfg_apikey_ph" autocomplete="off"><div class="hint" data-i18n="cfg_apikey_hint">用于认证 OpenAPI 请求。已配过就无需重填——刷新页面会自动用环境 key 连接。</div></div>
+      <div class="fld"><label data-i18n="cfg_signkey_label">GMGN SIGNING KEY · 请求签名密钥</label><textarea id="signKey" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" autocomplete="off"></textarea><div class="hint" data-i18n="cfg_signkey_hint">Ed25519 签名密钥，非钱包私钥；仅发往本地后端</div></div>
+      <div class="fld"><label data-i18n="cfg_mode_label">成交模式</label><div style="margin-top:7px"><label class="tg"><input id="liveTg" type="checkbox" onchange="onLive(this)"><span class="tr"><span class="kn"></span></span><span id="liveLbl">SHADOW · 一键买入只记录</span></label></div><div class="hint" data-i18n="cfg_mode_hint">链在右上角 CHAIN 切换（存浏览器，不写文件）</div></div>
+      <div class="mwarn" data-i18n="cfg_mwarn">⚠ 两个 key 只发送到你本机后端 (127.0.0.1)，不离开本机、不写浏览器存储。SHADOW 下「一键买入/平仓」只落日志不真实发单；切 LIVE 才会经签名密钥真实成交。</div>
+    </div>
+    <div class="mfoot"><button class="mbtn" id="saveBtn" onclick="saveCfg()" data-i18n="cfg_save">保存到本地后端</button><button class="mbtn ghost" onclick="closeCfg()" data-i18n="btn_close">关闭</button><span class="savestate" id="saveState"></span></div>
+  </div>
+</div>
+
+<div class="scrim" id="pipeScrim">
+  <div class="modal">
+    <h2><span id="ic-pipecog"></span><span data-i18n="pipe_h2">筛选设置 · 热榜命令 / 轮询</span><span class="x" onclick="closePipe()">×</span></h2>
+    <div class="mbody">
+      <div class="fld"><label data-i18n="pipe_cmd_label">GMGN-CLI 热榜命令</label><textarea id="trendCmd" rows="3" placeholder="gmgn-cli market trending ..." autocomplete="off" spellcheck="false"></textarea><div class="hint" data-i18n="pipe_cmd_hint">每轮扫描执行的完整命令；须以 <code>gmgn-cli market trending</code> 开头，自动补 <code>--raw</code>。改 --limit / --interval / --order-by / --filter / --chain 即可。</div></div>
+      <div class="fld"><label data-i18n="pipe_poll_label">轮询间隔（秒）</label><div class="szrow"><input id="pollSec" type="number" step="0.5" min="1"><span class="unit">s</span></div><div class="hint" data-i18n="pipe_poll_hint">前端每隔多久打一次 /api/run。建议 ≥30s 省配额；先感受可短些。</div></div>
+      <div class="mwarn" data-i18n="pipe_mwarn">⚠ 命令在你本机后端执行（127.0.0.1），仅限热榜命令。保存后立即生效：命令下一轮起用，间隔即时重设。</div>
+    </div>
+    <div class="mfoot"><button class="mbtn" onclick="savePipe()" data-i18n="pipe_save">保存并立即生效</button><button class="mbtn ghost" onclick="resetPipeCmd()" data-i18n="pipe_reset">恢复默认命令</button><button class="mbtn ghost" onclick="closePipe()" data-i18n="btn_close">关闭</button><span class="savestate" id="pipeState"></span></div>
+  </div>
+</div>
+
+<!-- buy modal -->
+<div class="scrim" id="buyScrim">
+  <div class="modal">
+    <h2><span id="ic-buyz"></span><span data-i18n="buy_h2">一键买入 · </span><span id="buySym"></span><span class="x" onclick="closeBuy()">×</span></h2>
+    <div class="mbody">
+      <div class="fld"><label data-i18n="buy_size_label">买入数量（代码按固定分数法算好，可调）</label>
+        <div class="szrow"><input id="buySize" type="number" step="0.0001" min="0"><span class="unit">SOL</span></div>
+        <div class="hint" data-i18n="buy_size_hint">仓位 = 冒险额 / 止损距离。LLM 不参与定数字。</div>
+      </div>
+      <div class="exitplan" id="buyExit"></div>
+      <div class="mwarn" id="buyRiskWarn" style="display:none"></div>
+      <div class="mwarn" id="buyModeNote"></div>
+    </div>
+    <div class="mfoot"><button class="mbtn" id="buyConfirm" onclick="doBuy()" data-i18n="buy_confirm">确认买入</button><button class="mbtn ghost" onclick="closeBuy()" data-i18n="btn_cancel">取消</button><span class="savestate" id="buyState"></span></div>
+  </div>
+</div>
+
+<div class="scrim" id="confirmScrim">
+  <div class="modal" style="width:420px">
+    <h2><span id="confirmTitle" data-i18n="confirm_title">确认</span><span class="x" onclick="closeConfirm()">×</span></h2>
+    <div class="mbody"><div id="confirmMsg" style="font-size:13px;line-height:1.7;color:var(--paper2)"></div></div>
+    <div class="mfoot"><button class="mbtn" id="confirmOk" data-i18n="confirm_ok">确认</button><button class="mbtn ghost" onclick="closeConfirm()" data-i18n="btn_cancel">取消</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="tip" id="tip"></div>
+
+<script>
+/* ── i18n 词典（中 / 英）── */
+const I18N={
+  zh:{
+    title:'AI Trader - 自动筛选，一键成交，持仓监控',
+    demobar:'⚠ <b>演示模式</b> · 示例数据，<b>非 GMGN 官方交易功能，不构成投资建议</b> · 想接真实链上数据，请 clone 源码本地运行（自配 API Key，买卖仅在你本机执行）',
+    publicbar:'● <b>实时真实数据 · 只读演示</b> · 数据为链上真实筛选结果，<b>不构成投资建议</b> · 本页只展示、不可下单/改配置；想自己交易请 clone 源码本地运行（自配 API Key）',
+    h1_suffix:'筛选 + 一键成交',
+    tag:'确定性规则抓全 · ML 砍狠 · LLM 只解释幸存者 · 你按下成交',
+    mode_tip:'成交模式　|　模拟盘：买卖只记录、不上链（当前锁定，先感受用）；实盘：经签名密钥真实成交、动用资金',
+    gear_title:'配置凭据',
+    lang_title:'中文 / English',
+    chain_title:'点击切换链',
+    src_backend:'本地后端',
+    pipe_h3:'筛选结果 · 待你决策',
+    scanning:'◢ 扫描中…',
+    amt_title:'买入数量（原生代币），改这里下面所有买入按钮同步',
+    amt_lbl:'买入',
+    pipegear_title:'热榜命令 / 轮询间隔',
+    th_token:'TOKEN', th_pipe:'规则→排序→LLM', th_safe:'安全', th_smart:'聪明钱/KOL', th_timing:'时机', th_pri:'优先级', th_dec:'决策',
+    log_h3:'实时决策日志 · trade_decisions.jsonl',
+    logtog_title:'展开 / 收起',
+    esc_h3:'持仓逃生监控',
+    funnel_h3:'闸门漏斗 · ',
+    cfg_h2:'配置 · GMGN 凭据',
+    cfg_apikey_ph:'留空 = 沿用 ~/.config/gmgn/.env 已有 key',
+    cfg_apikey_hint:'用于认证 OpenAPI 请求。已配过就无需重填——刷新页面会自动用环境 key 连接。',
+    cfg_signkey_label:'GMGN SIGNING KEY · 请求签名密钥',
+    cfg_signkey_hint:'Ed25519 签名密钥，非钱包私钥；仅发往本地后端',
+    cfg_mode_label:'成交模式',
+    cfg_mode_hint:'链在右上角 CHAIN 切换（存浏览器，不写文件）',
+    cfg_mwarn:'⚠ 两个 key 只发送到你本机后端 (127.0.0.1)，不离开本机、不写浏览器存储。SHADOW 下「一键买入/平仓」只落日志不真实发单；切 LIVE 才会经签名密钥真实成交。',
+    cfg_save:'保存到本地后端',
+    btn_close:'关闭', btn_cancel:'取消',
+    pipe_h2:'筛选设置 · 热榜命令 / 轮询',
+    pipe_cmd_label:'GMGN-CLI 热榜命令',
+    pipe_cmd_hint:'每轮扫描执行的完整命令；须以 <code>gmgn-cli market trending</code> 开头，自动补 <code>--raw</code>。改 --limit / --interval / --order-by / --filter / --chain 即可。',
+    pipe_poll_label:'轮询间隔（秒）',
+    pipe_poll_hint:'前端每隔多久打一次 /api/run。建议 ≥30s 省配额；先感受可短些。',
+    pipe_mwarn:'⚠ 命令在你本机后端执行（127.0.0.1），仅限热榜命令。保存后立即生效：命令下一轮起用，间隔即时重设。',
+    pipe_save:'保存并立即生效', pipe_reset:'恢复默认命令',
+    buy_h2:'一键买入 · ',
+    buy_size_label:'买入数量（代码按固定分数法算好，可调）',
+    buy_size_hint:'仓位 = 冒险额 / 止损距离。LLM 不参与定数字。',
+    buy_confirm:'确认买入',
+    confirm_title:'确认', confirm_ok:'确认',
+    tokf_on:'已开启：筛选结果只看当前持仓的币 · 再点恢复全部',
+    tokf_off:'点击：只看当前持仓的币（仅显示已在逃生监控里的）',
+    gate0:'扫描', gate1:'避雷', gate2:'共识', gate3:'ML排序', gate4:'LLM', gate5:'待决策',
+    gatetip0:'从热榜拉到的候选，所有币都会经过',
+    gatetip1:'硬门槛：honeypot / 是否放弃增发权 / 买卖税 / bundler% / dev持仓% / top10集中度',
+    gatetip2:'聪明钱(smart_degen) + 知名KOL(renowned) 计数之和 ≥ 阈值',
+    gatetip3:'按优先级打分排序，只放分数最高的少数进 LLM（砍量，对应文档 ML 排序）',
+    gatetip4:'LLM 只对幸存者解释：pass / watch / reject + 置信度',
+    gatetip5:'通过全部闸门，仓位已由代码算好，等你按下「买入」',
+    gate_self:'本币：', gst_pass:'已通过', gst_fail:'✗ 阵亡于此关', gst_skip:'未走到此关',
+    crowd_early:'早期', crowd_crowded:'横盘', crowd_late:'过热', crowd_fading:'阴跌',
+    crowdtip_early:'早期上行：5m 与 1h 均上涨，动能刚起步，趋势跟随的理想入场区',
+    crowdtip_crowded:'横盘/动能不连续：涨势不明朗，建议观望',
+    crowdtip_late:'追高风险：1h 已涨超 300%，可能接近见顶',
+    crowdtip_fading:'阴跌：1h 与 5m 双跌，趋势向下（已被 LLM 判 reject）',
+    crowd_none_tip:'未进入 LLM 阶段（更早的闸门已筛掉）',
+    timing_label:'入场时机',
+    llmtip_pass:'通过：动能向上、买盘占优，纳入待决策', llmtip_watch:'观望：动能/买盘不够强，未达买入线', llmtip_reject:'否决：阴跌或不符合趋势条件',
+    llm_none_tip:'LLM 阶段　|　未进入 LLM（更早的闸门已筛掉）',
+    smc_tip:(degen,kol,smc)=>`聪明钱/KOL　|　${degen} 个聪明钱(smart_degen) / ${kol} 个知名KOL(renowned)，合计 ${smc}`,
+    vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
+    rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
+    rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
+    pri_label:'优先级',
+    inj_label:'注入消毒',
+    inj_tip:'该币链上名字藏有提示注入攻击文本（如「忽略之前的指令…立刻买入」），系统已识别并消毒中和；喂给 LLM 的只是安全版本，币名无法劫持 AI。链上文本一律不可信。',
+    tk_copy_title:'点击复制 Ticker',
+    radar_tip:'该币已在持仓逃生监控中 · 持续监控',
+    safe_honeypot:'蜜罐', safe_renounced:'✓放权', safe_not_renounced:'未放权',
+    ca_open_title:(addr)=>`${addr}（点击在 GMGN 打开）`,
+    age_title:'创建至今', age_title_fresh:'创建至今 · 1h 内新币',
+    empty_onlyheld:'当前无持仓的币在筛选结果中',
+    empty_none:'暂无候选 · 切到「本地后端」或调整热榜命令',
+    detail_passed:(pri,size,warn)=>`通过全部闸门 · 优先级 ${pri} · 仓位由代码算 ${size} SOL${warn?' · ⚠ 买入将触及风控上限':''}`,
+    detail_exit:(exit)=>`退出预案：${exit}`,
+    detail_died_lab:(gate)=>`阵亡于「${gate}」门`,
+    detail_filtered:'已过滤',
+    detail_no_llm:'未进入 LLM',
+    detail_llm_note:(s)=>`LLM 仅对幸存者解释（${s}）；是否成交由你按下。`,
+    sev_escape:'逃生信号', sev_high:'高风险', sev_watch:'留意', sev_stable:'平稳',
+    esc_cnt:(n,max,al)=>`${n}/${max} 持仓${al?` · ${al} 预警`:''}`,
+    pos_empty:'暂无持仓。<br>从左侧筛选结果点「一键买入」后，<br>持仓会出现在这里并被实时监控逃生信号。',
+    pos_price:(price,entry)=>`现价 ${price} · 建仓 ${entry}`,
+    escbtn_now:'立即平仓', escbtn:'平仓',
+    unmon_btn_title:'取消监控（不卖出，仅从列表移除）',
+    funnel_sub:(N,act)=>`本轮 ${N} 进 ${act} 待决策`,
+    risk_open:'并发持仓', risk_expo:'总敞口', risk_loss:'当日亏损', risk_streak:'连亏 / kill',
+    log_screen_reason:(size,pri)=>`通过闸门 · 待决策 · 建议 ${size} SOL · 优先级${pri}`,
+    kpi_scan:'累计扫描', kpi_safety:'过避雷门', kpi_consensus:'过共识门', kpi_pending:'待你决策', kpi_pos:'持仓 / 上限', kpi_escape:'逃生预警', kpi_catch:'避雷命中率',
+    kpi_sub_scan:(c)=>`${c} 轮 · top-N 粗筛`, kpi_sub_block:(n)=>`拦截 ${n}`, kpi_sub_pending:'点击一键买入', kpi_sub_expo:(e)=>`敞口 ${e} SOL`,
+    kpi_sub_escape_act:'⚠ 需立即处理', kpi_sub_escape_ok:'持仓平稳', kpi_catch_sub:'0 rug 放过',
+    sig_normal:'持仓正常监控中',
+    sig_top31:'top10 集中度升至 31%', sig_top45:'top10 集中度升至 45%', sig_top58:'top10 集中度升至 58%',
+    sig_5mweak:'5m 动能转弱、卖压上来', sig_mintback:'增发权疑似找回（可砸盘）← 逃生信号',
+    sig_top10sell:'top10 持有人开始减持', sig_devout:'dev 关联钱包转出', sig_lppull:'LP 流动性撤离启动 ← 逃生信号',
+    alert_lp:'逃生信号：LP 撤离启动，建议立即平仓',
+    exit_full:'SL -35% · TP +60%→卖40% / +150%→卖30% · 移动止损 25%',
+    exit_ladder:'SL -35% · TP 阶梯 · 移动止损 25%',
+    th_cleancat:'48 聪明钱 + 16 知名 KOL 在场，放权完成、筹码尚分散。',
+    th_gooddog:'9 聪明钱 + 3 KOL 早期吸筹，放权完成、筹码分散。',
+    th_basepepe:'质量门全过；但买入会触及并发/敞口上限，风控提示你先腾位。',
+    rs_latemoon:'LLM 判定 late：1h 已涨 250%，疑似接盘位。',
+    rs_bundled:'避雷门槛：bundler 41% > 30%，dev 持仓 25% > 10%，top10 55%。',
+    rs_rugpull:'避雷门槛：honeypot 检测命中，直接否决。',
+    rs_inject:'共识门槛：聪明钱+KOL 0 < 1。（币名提示注入已消毒）',
+    toast_chain_switched:(l)=>`已切换到 ${l}`, toast_chain_fail:(m)=>`切链失败：${m}`,
+    toast_be_fail:(m)=>`后端连接失败，已暂停轮询：${m}`,
+    toast_be_switched:'已切到本地后端：填 key 保存后开始轮询',
+    pipe_loading:'加载中…', pipe_be_off:'后端未连接，命令仅本地后端可用',
+    toast_poll_min:'轮询间隔至少 1 秒', saving:'保存中…',
+    pipe_applied:(s)=>`✓ 已生效（间隔 ${s}s）`, toast_pipe_saved:'筛选设置已保存并生效', toast_pipe_fail:(m)=>`保存失败：${m}`,
+    live_lbl_live:'LIVE · 一键即真实成交！', live_lbl_shadow:'SHADOW · 一键买入只记录', mode_live:'实盘', mode_shadow:'模拟盘',
+    confirm_live_title:'切到 LIVE 模式',
+    confirm_live_msg:'之后「一键买入 / 平仓」会经签名密钥<b>真实成交、动用资金</b>。<br>确定开启吗？',
+    toast_need_key:'请先填 API Key', cfg_saved:'✓ 已写入 ~/.config/gmgn/.env', toast_cfg_fail:(m)=>`保存失败：后端未启动？(${m})`,
+    buy_exit_html:(exit,thesis)=>`<b>退出预案（成交后由策略单挂出）</b><br>${exit}<br><span style="color:var(--dim)">理由：${thesis||'—'}</span>`,
+    buy_riskwarn:'⚠ 组合风控：买入后将达到并发/敞口上限。建议先平掉一个持仓再买，或调小数量。',
+    buy_mode_live:'当前 LIVE 模式：确认后将经签名密钥真实下单。', buy_mode_shadow:'当前 SHADOW 模式：确认后只记录意图、不真实发单。',
+    toast_buy:(live,sym,size)=>`${live?'已真实下单 ':'已记录(SHADOW) '}${sym} ${size} SOL`,
+    toast_buy_demo:(live,sym,size)=>`${live?'已真实下单 ':'已记录(SHADOW) '}${sym} ${size} SOL · 已加入逃生监控`,
+    buy_log_reason:(live,size,exit)=>`${live?'LIVE 真实成交 ':'SHADOW 记录 '}${size} SOL · ${exit}`,
+    toast_buy_fail:(m)=>`下单失败：${m}`, buy_ordering:'下单中…',
+    sell_title:(sym)=>`平仓 ${sym}`,
+    sell_msg:(sym,size,esc)=>`平仓 <b>${sym}</b>（${size} SOL）？`+(esc?'<br><span style="color:var(--clay)">⚠ 已触发逃生信号，建议立即平仓。</span>':'')+'<br><span style="color:var(--dim2);font-size:11.5px">SHADOW 模式下仅记录、不真实发单。</span>',
+    toast_sell_sent:(sym)=>`已发送平仓 ${sym}`, toast_sell_fail:(m)=>`平仓失败：${m}`,
+    sell_log:(esc,pnl)=>`${esc?'逃生平仓 ':'手动平仓 '}PnL ${pnl}`, toast_sold:(sym)=>`已平仓 ${sym}`,
+    unmon_title:(sym)=>`取消监控 ${sym}`,
+    unmon_msg:(sym)=>`仅把 <b>${sym}</b> 从持仓逃生监控列表移除，<b>不卖出、不计风控</b>。<br><span style="color:var(--dim2);font-size:11.5px">你仍持有该币，只是不再监控它的逃生信号。</span>`,
+    toast_unmon:(sym)=>`已取消监控 ${sym}`, toast_unmon_fail:(m)=>`取消失败：${m}`,
+    toast_copied:(tk)=>`已复制 ${tk}`, toast_copy_fail:'复制失败',
+    toast_connected:(l)=>`已连接本地后端（${l}）`,
+  },
+  en:{
+    title:'AI Trader - Auto-screen, One-Click Trade, Position Monitor',
+    demobar:'⚠ <b>Demo Mode</b> · sample data, <b>not an official GMGN trading feature, not investment advice</b> · for real on-chain data, clone the source and run locally (your own API key; trades execute only on your machine)',
+    publicbar:'● <b>Live real data · read-only demo</b> · real on-chain screening results, <b>not investment advice</b> · view-only here—no orders, no config changes; to trade yourself, clone the source and run locally (your own API key)',
+    h1_suffix:'Screen + One-Click Trade',
+    tag:'Deterministic rules cast wide · ML cuts hard · LLM only explains survivors · you press to trade',
+    mode_tip:'Trade mode　|　Shadow: trades recorded only, never on-chain (locked for now, just to feel it); Live: real settlement via signing key, real funds',
+    gear_title:'Configure credentials',
+    lang_title:'中文 / English',
+    chain_title:'Click to switch chain',
+    src_backend:'Local backend',
+    pipe_h3:'Screening Results · Awaiting Your Call',
+    scanning:'◢ Scanning…',
+    amt_title:'Buy amount (native token); changing it syncs every buy button below',
+    amt_lbl:'BUY',
+    pipegear_title:'Trending command / poll interval',
+    th_token:'TOKEN', th_pipe:'RULE→RANK→LLM', th_safe:'SAFE', th_smart:'SMART/KOL', th_timing:'TIMING', th_pri:'PRIORITY', th_dec:'DECISION',
+    log_h3:'Live Decision Log · trade_decisions.jsonl',
+    logtog_title:'Expand / collapse',
+    esc_h3:'Position Escape Monitor',
+    funnel_h3:'Gate Funnel · ',
+    cfg_h2:'Configure · GMGN Credentials',
+    cfg_apikey_ph:'Leave empty = reuse existing key in ~/.config/gmgn/.env',
+    cfg_apikey_hint:'Used to authenticate OpenAPI requests. Already set? No need to re-enter—refreshing auto-connects with the env key.',
+    cfg_signkey_label:'GMGN SIGNING KEY · request signing key',
+    cfg_signkey_hint:'Ed25519 signing key, not a wallet private key; sent only to the local backend',
+    cfg_mode_label:'Trade mode',
+    cfg_mode_hint:'Switch chain at top-right CHAIN (stored in browser, not written to file)',
+    cfg_mwarn:'⚠ Both keys are sent only to your local backend (127.0.0.1)—they never leave your machine or touch browser storage. In SHADOW, one-click buy/sell only logs; switch to LIVE for real settlement via the signing key.',
+    cfg_save:'Save to local backend',
+    btn_close:'Close', btn_cancel:'Cancel',
+    pipe_h2:'Screening Settings · Trending Command / Poll',
+    pipe_cmd_label:'GMGN-CLI trending command',
+    pipe_cmd_hint:'Full command run each scan; must start with <code>gmgn-cli market trending</code>, <code>--raw</code> auto-added. Tune --limit / --interval / --order-by / --filter / --chain.',
+    pipe_poll_label:'Poll interval (seconds)',
+    pipe_poll_hint:'How often the frontend calls /api/run. ≥30s recommended to save quota; shorter for first feel.',
+    pipe_mwarn:'⚠ The command runs on your local backend (127.0.0.1), trending commands only. Takes effect on save: command from the next round, interval reset instantly.',
+    pipe_save:'Save & apply now', pipe_reset:'Restore default command',
+    buy_h2:'One-Click Buy · ',
+    buy_size_label:'Buy amount (computed by fixed-fraction; adjustable)',
+    buy_size_hint:'Size = risk amount / stop distance. The LLM never sets the number.',
+    buy_confirm:'Confirm buy',
+    confirm_title:'Confirm', confirm_ok:'Confirm',
+    tokf_on:'On: results show only currently held tokens · click to show all',
+    tokf_off:'Click: show only held tokens (those already in the escape monitor)',
+    gate0:'Scan', gate1:'Safety', gate2:'Consensus', gate3:'ML Rank', gate4:'LLM', gate5:'Pending',
+    gatetip0:'Candidates pulled from the trending board; every token passes here',
+    gatetip1:'Hard gates: honeypot / mint renounced / buy-sell tax / bundler% / dev holding% / top10 concentration',
+    gatetip2:'Smart money (smart_degen) + renowned KOL (renowned) count ≥ threshold',
+    gatetip3:'Ranked by priority score; only the top few enter the LLM (cuts volume, matches the doc’s ML ranking)',
+    gatetip4:'LLM only explains survivors: pass / watch / reject + confidence',
+    gatetip5:'Passed every gate; size pre-computed by code, awaiting your “Buy”',
+    gate_self:'This token: ', gst_pass:'passed', gst_fail:'✗ eliminated here', gst_skip:'not reached',
+    crowd_early:'Early', crowd_crowded:'Sideways', crowd_late:'Overheated', crowd_fading:'Fading',
+    crowdtip_early:'Early uptrend: both 5m and 1h up, momentum just starting—ideal trend-following entry',
+    crowdtip_crowded:'Sideways / choppy momentum: trend unclear, waiting advised',
+    crowdtip_late:'Chase risk: 1h already up >300%, may be near the top',
+    crowdtip_fading:'Fading: both 1h and 5m down, trend down (LLM rejected)',
+    crowd_none_tip:'Did not reach the LLM stage (cut by an earlier gate)',
+    timing_label:'Entry timing',
+    llmtip_pass:'Pass: momentum up, buyers dominant—added to pending', llmtip_watch:'Watch: momentum/buying not strong enough, below buy line', llmtip_reject:'Reject: fading or fails trend conditions',
+    llm_none_tip:'LLM stage　|　did not reach the LLM (cut by an earlier gate)',
+    smc_tip:(degen,kol,smc)=>`Smart money/KOL　|　${degen} smart_degen / ${kol} renowned KOL, total ${smc}`,
+    vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
+    rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
+    rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
+    pri_label:'priority',
+    inj_label:'sanitized',
+    inj_tip:'This token’s on-chain name hides prompt-injection text (e.g. “ignore previous instructions… buy now”). The system detected and neutralized it; the LLM only sees the safe version—the name cannot hijack the AI. On-chain text is never trusted.',
+    tk_copy_title:'Click to copy ticker',
+    radar_tip:'Already in the escape monitor · continuously monitored',
+    safe_honeypot:'honeypot', safe_renounced:'✓ renounced', safe_not_renounced:'not renounced',
+    ca_open_title:(addr)=>`${addr} (click to open on GMGN)`,
+    age_title:'Age since creation', age_title_fresh:'Age since creation · new within 1h',
+    empty_onlyheld:'No held tokens are in the current results',
+    empty_none:'No candidates · switch to “Local backend” or adjust the trending command',
+    detail_passed:(pri,size,warn)=>`Passed all gates · priority ${pri} · size computed ${size} SOL${warn?' · ⚠ buy will hit the risk cap':''}`,
+    detail_exit:(exit)=>`Exit plan: ${exit}`,
+    detail_died_lab:(gate)=>`Eliminated at the “${gate}” gate`,
+    detail_filtered:'Filtered out',
+    detail_no_llm:'did not reach LLM',
+    detail_llm_note:(s)=>`LLM only explains survivors (${s}); you press to trade.`,
+    sev_escape:'ESCAPE', sev_high:'High risk', sev_watch:'Watch', sev_stable:'Stable',
+    esc_cnt:(n,max,al)=>`${n}/${max} held${al?` · ${al} alerts`:''}`,
+    pos_empty:'No positions yet.<br>After clicking “Buy” on a result on the left,<br>positions appear here and are monitored for escape signals in real time.',
+    pos_price:(price,entry)=>`Now ${price} · Entry ${entry}`,
+    escbtn_now:'Sell now', escbtn:'Close',
+    unmon_btn_title:'Stop monitoring (no sell, just remove from the list)',
+    funnel_sub:(N,act)=>`${N} in · ${act} pending`,
+    risk_open:'Open positions', risk_expo:'Total exposure', risk_loss:'Daily loss', risk_streak:'Streak / kill',
+    log_screen_reason:(size,pri)=>`passed gates · pending · suggest ${size} SOL · priority ${pri}`,
+    kpi_scan:'Total scanned', kpi_safety:'Past safety', kpi_consensus:'Past consensus', kpi_pending:'Awaiting you', kpi_pos:'Positions / cap', kpi_escape:'Escape alerts', kpi_catch:'Trap catch rate',
+    kpi_sub_scan:(c)=>`${c} rounds · top-N prefilter`, kpi_sub_block:(n)=>`blocked ${n}`, kpi_sub_pending:'click to buy', kpi_sub_expo:(e)=>`exposure ${e} SOL`,
+    kpi_sub_escape_act:'⚠ act now', kpi_sub_escape_ok:'all stable', kpi_catch_sub:'0 rugs missed',
+    sig_normal:'position monitored, normal',
+    sig_top31:'top10 concentration up to 31%', sig_top45:'top10 concentration up to 45%', sig_top58:'top10 concentration up to 58%',
+    sig_5mweak:'5m momentum weakening, sell pressure rising', sig_mintback:'mint authority possibly regained (dump risk) ← escape signal',
+    sig_top10sell:'top10 holders start selling', sig_devout:'dev-linked wallet outflow', sig_lppull:'LP liquidity pull started ← escape signal',
+    alert_lp:'Escape signal: LP pull started, sell now',
+    exit_full:'SL -35% · TP +60%→sell 40% / +150%→sell 30% · trailing 25%',
+    exit_ladder:'SL -35% · TP ladder · trailing 25%',
+    th_cleancat:'48 smart-money + 16 renowned KOL present; mint renounced, supply still dispersed.',
+    th_gooddog:'9 smart-money + 3 KOL accumulating early; mint renounced, supply dispersed.',
+    th_basepepe:'Passed all quality gates; but buying would hit the concurrency/exposure cap—risk asks you to free a slot first.',
+    rs_latemoon:'LLM ruled late: 1h already up 250%, likely a bag-holder spot.',
+    rs_bundled:'Safety gate: bundler 41% > 30%, dev holding 25% > 10%, top10 55%.',
+    rs_rugpull:'Safety gate: honeypot detected, rejected outright.',
+    rs_inject:'Consensus gate: smart-money+KOL 0 < 1. (token-name prompt injection sanitized)',
+    toast_chain_switched:(l)=>`Switched to ${l}`, toast_chain_fail:(m)=>`Chain switch failed: ${m}`,
+    toast_be_fail:(m)=>`Backend connection failed, polling paused: ${m}`,
+    toast_be_switched:'Switched to local backend: save your key to start polling',
+    pipe_loading:'Loading…', pipe_be_off:'Backend not connected; command available only with the local backend',
+    toast_poll_min:'Poll interval must be ≥ 1s', saving:'Saving…',
+    pipe_applied:(s)=>`✓ Applied (interval ${s}s)`, toast_pipe_saved:'Screening settings saved and applied', toast_pipe_fail:(m)=>`Save failed: ${m}`,
+    live_lbl_live:'LIVE · one click = real trade!', live_lbl_shadow:'SHADOW · one-click buy records only', mode_live:'LIVE', mode_shadow:'SHADOW',
+    confirm_live_title:'Switch to LIVE mode',
+    confirm_live_msg:'After this, one-click buy/sell settles for <b>real via the signing key, using real funds</b>.<br>Enable it?',
+    toast_need_key:'Enter your API Key first', cfg_saved:'✓ Written to ~/.config/gmgn/.env', toast_cfg_fail:(m)=>`Save failed: backend not running? (${m})`,
+    buy_exit_html:(exit,thesis)=>`<b>Exit plan (placed as strategy orders after fill)</b><br>${exit}<br><span style="color:var(--dim)">Thesis: ${thesis||'—'}</span>`,
+    buy_riskwarn:'⚠ Portfolio risk: buying will hit the concurrency/exposure cap. Close a position first or reduce the size.',
+    buy_mode_live:'LIVE mode: confirm to place a real order via the signing key.', buy_mode_shadow:'SHADOW mode: confirm to record intent only, no real order.',
+    toast_buy:(live,sym,size)=>`${live?'Order placed ':'Recorded (SHADOW) '}${sym} ${size} SOL`,
+    toast_buy_demo:(live,sym,size)=>`${live?'Order placed ':'Recorded (SHADOW) '}${sym} ${size} SOL · added to escape monitor`,
+    buy_log_reason:(live,size,exit)=>`${live?'LIVE filled ':'SHADOW logged '}${size} SOL · ${exit}`,
+    toast_buy_fail:(m)=>`Order failed: ${m}`, buy_ordering:'Placing order…',
+    sell_title:(sym)=>`Close ${sym}`,
+    sell_msg:(sym,size,esc)=>`Close <b>${sym}</b> (${size} SOL)?`+(esc?'<br><span style="color:var(--clay)">⚠ Escape signal triggered, close now.</span>':'')+'<br><span style="color:var(--dim2);font-size:11.5px">In SHADOW, records only, no real order.</span>',
+    toast_sell_sent:(sym)=>`Sell sent ${sym}`, toast_sell_fail:(m)=>`Close failed: ${m}`,
+    sell_log:(esc,pnl)=>`${esc?'Escape sell ':'Manual sell '}PnL ${pnl}`, toast_sold:(sym)=>`Closed ${sym}`,
+    unmon_title:(sym)=>`Stop monitoring ${sym}`,
+    unmon_msg:(sym)=>`Remove <b>${sym}</b> from the escape monitor only—<b>no sell, no risk impact</b>.<br><span style="color:var(--dim2);font-size:11.5px">You still hold it; only its escape signals stop being monitored.</span>`,
+    toast_unmon:(sym)=>`Stopped monitoring ${sym}`, toast_unmon_fail:(m)=>`Stop failed: ${m}`,
+    toast_copied:(tk)=>`Copied ${tk}`, toast_copy_fail:'Copy failed',
+    toast_connected:(l)=>`Connected to local backend (${l})`,
+  }
+};
+function detectLang(){
+  const saved=localStorage.getItem('aitrader_lang');
+  if(saved==='zh'||saved==='en')return saved;
+  const nav=(navigator.language||navigator.userLanguage||'').toLowerCase();
+  return nav.indexOf('zh')===0?'zh':'en';   // 简体/繁体(zh-*) → 中文；其他 → 英文
+}
+let lang=detectLang();
+function t(k,...a){const d=I18N[lang]||I18N.zh;let s=d[k];if(s===undefined)s=I18N.zh[k];if(s===undefined)return k;return typeof s==='function'?s(...a):s;}
+
+/* ── icons ── */
+const I={
+  scan:'<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  chev:'<polyline points="6 9 12 15 18 9"/>',
+  shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  users:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>',
+  brain:'<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24A2.5 2.5 0 0 0 14.5 2z"/>',
+  filter:'<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
+  gauge:'<path d="M12 14l4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  zap:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+  skull:'<path d="M16 20a2 2 0 0 0 1.56-3.25 8 8 0 1 0-11.12 0A2 2 0 0 0 8 20"/><path d="M8 20v2h8v-2"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/>',
+  ban:'<circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>',
+  warn:'<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  trend:'<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+  target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+  layers:'<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+  door:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  siren:'<path d="M7 18v-6a5 5 0 0 1 10 0v6"/><path d="M5 21h14"/><path d="M12 2v1"/><path d="M4.6 5.6l.7.7"/><path d="M19.4 5.6l-.7.7"/>',
+  cog:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+};
+const svg=(n,c='currentColor')=>`<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
+const fill=n=>`<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">${I[n]}</svg>`;
+
+/* ── backend ── */
+/* 同源请求：后端(127.0.0.1:8000)托管本页时走相对路径，经隧道访问也回到本机后端；
+   仅 file:// 直接打开时回退到本地端口。连不上(纯静态/GitHub Pages)→ 自动 DEMO。 */
+const API=location.protocol==='file:'?"http://127.0.0.1:8000":"";
+let source="demo", bePolling=false, liveMode=false;
+let pollMs=5600, pollTimer=null, defaultTrendCmd="", curChain="sol", beReady=false, buyAmount=0.01;
+let onlyHeld=false;            // TOKEN 旁警告图标：只看当前持仓的币
+function toggleOnlyHeld(){
+  onlyHeld=!onlyHeld;
+  const el=document.getElementById('tokFilter');
+  el.classList.toggle('on',onlyHeld);
+  el.setAttribute('data-tip', t(onlyHeld?'tokf_on':'tokf_off'));
+  renderRows();
+}
+const escAlertSet=new Set();   // 持仓卡片当前处于弱红告警的 address（用于"首次进入才闪一下"）
+/* 持仓在左侧筛选里是否"非全绿/掉榜"：不在筛选列表 或 在但未通过全部闸门 → 告警 */
+function posIsAlert(p){
+  const addr=p.address||p.addr||'';
+  if(!addr)return false;
+  const t=T.find(x=>(x.address||'')===addr);
+  if(!t)return true;                 // 已掉出筛选榜
+  return t.status!=='action';        // 在榜但非全绿（被某门砍）
+}
+/* ── 多链：单位 / 标签 / 本地存储 ── */
+const NATIVE_UNIT={sol:'SOL',bsc:'BNB',base:'ETH',eth:'ETH'};
+const CHAIN_LABEL={sol:'SOL',bsc:'BSC',base:'Base',eth:'ETH'};
+const loadBuyAmt=ch=>{const v=parseFloat(localStorage.getItem('aitrader_buyamt_'+ch));return (isNaN(v)||v<0)?0.01:v;};
+function onAmt(el){let v=parseFloat(el.value);buyAmount=(isNaN(v)||v<0)?0:v;localStorage.setItem('aitrader_buyamt_'+curChain,buyAmount);renderRows();}
+function updateAmtUnit(){const u=document.getElementById('amtUnit');if(u)u.textContent=NATIVE_UNIT[curChain]||'SOL';}
+/* ── 链下拉菜单 ── */
+function toggleChainMenu(){const m=document.getElementById('chainMenu');m.classList.toggle('on');
+  [...m.children].forEach(d=>d.classList.toggle('sel',d.dataset.ch===curChain));}
+function closeChainMenu(){document.getElementById('chainMenu').classList.remove('on');}
+async function switchChain(ch){
+  closeChainMenu();
+  if(ch===curChain)return;
+  try{
+    if(source==='backend'){
+      const r=await fetch(API+'/api/chain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:ch})});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+    }
+    curChain=ch;
+    localStorage.setItem('aitrader_chain',ch);
+    document.getElementById('chainPill').textContent=CHAIN_LABEL[ch];
+    buyAmount=loadBuyAmt(ch);
+    const ai=document.getElementById('amtInput');if(ai)ai.value=buyAmount;
+    updateAmtUnit();
+    toast(t('toast_chain_switched',CHAIN_LABEL[ch]),'ok');
+    if(source==='backend'&&bePolling)scanCycle(); else renderAll(true);
+  }catch(e){toast(t('toast_chain_fail',e.message),'err');}
+}
+/* CA 缩写：前 5 … 后 4；GMGN 代币页链接 */
+const shortCA=a=>a?(a.length>11?a.slice(0,5)+'…'+a.slice(-4):a):'';
+const fmtPrice=v=>{if(!v)return '';const n=Number(v);return '$'+(n>=1?n.toFixed(4):n.toPrecision(3));};
+/* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
+function fmtAge(min){
+  if(min==null||isNaN(min))return '';
+  const s=Math.max(0,Math.round(min*60));
+  if(s>=86400)return Math.floor(s/86400)+'d';
+  if(s>=3600)return Math.floor(s/3600)+'h';
+  if(s>=60)return Math.floor(s/60)+'m';
+  return s+'s';
+}
+const caCell=t_=>{
+  const ca=t_.address
+    ?`<a class="ca" href="https://gmgn.ai/${curChain}/token/${t_.address}" target="_blank" rel="noopener" title="${t('ca_open_title',t_.address)}" onclick="event.stopPropagation()">${shortCA(t_.address)}</a>`
+    :`<small>${t_.addr||''}</small>`;
+  const ageStr=fmtAge(t_.age);
+  const fresh=(t_.age!=null&&!isNaN(t_.age)&&t_.age<60);   // 1 小时内 = 新币，标绿
+  const age=ageStr?`<span class="age${fresh?' fresh':''}" title="${t(fresh?'age_title_fresh':'age_title')}">${ageStr}</span>`:'';
+  return `<span class="carow">${ca}${age}</span>`;
+};
+
+/* ── pipeline gates (6, 含 ML 抑制) ── */
+const GATE_ICONS=['scan','shield','users','filter','brain','target'];
+const gateName=i=>t('gate'+i);
+
+/* 演示/真实数据里 thesis/reason/exit/signal 可能是 i18n key（demo）或后端原文（live），统一取词 */
+const reasonOf=r=>r.reasonK?t(r.reasonK):(r.reason||'');
+const thesisOf=r=>r.thesisK?t(r.thesisK):(r.thesis||'');
+const exitOf=r=>r.exitK?t(r.exitK):(r.exit||t('exit_ladder'));
+const sigText=s=>s.k?t(s.k):s.t;
+
+const COL={ACTION:'var(--lime)',WARN:'var(--amber)',SKIP:'var(--clay)',BLOCK:'var(--amber)'};
+
+/* ── demo screening data ──
+   status: 'action'=通过全部闸门, 摆出来等你买  |  'reject'=被某道门刷掉
+   warn=true: 通过质量门, 但买入会触发组合风控(并发/敞口), 仅警示不阻断       */
+/* 与后端 priority_score 同构：共识计数亚线性压缩，无合成安全分 */
+function priCalc(t){const c=Math.min(28,9*Math.log10(1+(t.smc||0)));let s=t.conv*38+c+(1-Math.min(t.top10||0,1))*14+((t.ren)?6:0)+(t.crowd==='early'?10:t.crowd==='late'?-15:0);return Math.max(0,Math.min(99,Math.round(s)));}
+const SEED=[
+ {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,exitK:'exit_full',thesisK:'th_cleancat'},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'pass',conv:.81,status:'action',size:0.2857,died:null,exitK:'exit_full',thesisK:'th_gooddog'},
+ {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,exitK:'exit_ladder',thesisK:'th_basepepe'},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'reject',conv:.55,status:'reject',died:4,reasonK:'rs_latemoon'},
+ {sym:'BUNDLED',address:'5sFgUaXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ3yQ',age:33,hp:false,ren:true,bund:.41,dev:.25,top10:.55,smc:8,degen:6,kol:2,crowd:'early',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_bundled'},
+ {sym:'RUGPULL',address:'8vR7tWn4bYj6cLwZ3sFgUaXpBn2dMfTqVrJkHx9pQ5mKzR',age:15,hp:true,ren:false,bund:.22,dev:.18,top10:.61,smc:1,degen:1,kol:0,crowd:'crowded',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_rugpull'},
+ {sym:'INJECT',inj:true,address:'3aXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ5sFgUwH',age:20,hp:false,ren:true,bund:.09,dev:.05,top10:.33,smc:0,degen:0,kol:0,crowd:'early',v:'-',conv:0,status:'reject',died:2,reasonK:'rs_inject'},
+];
+function freshSeed(){return SEED.map(o=>{const c={...o};c.pri=c.status==='action'?priCalc(c):0;return c;});}
+let T=[];                 // 初始空，刷新时显示骨架 loading，不假写代币
+let loadingScreen=true;   // 首次拿到真实/DEMO 数据前显示骨架
+
+/* ── 持仓 (逃生监控) ── */
+/* 初始/真实模式刷新瞬间空列表；DEMO 模式用这组演示持仓（覆盖 平稳/留意/高风险/逃生 四档，
+   前 3 个 address 与筛选演示数据一致 → 顶部警灯「只看持仓」可筛出 + 显示雷达；
+   LATEMOON 在筛选里是 reject(非全绿)→ 卡片弱红；RUGRUN 不在筛选(掉榜)→ 也弱红） */
+function seedPositions(){return [
+ {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',size:0.01,pnl:0.32,severity:8,escaping:false,_frozen:true,entryPrice:0.0021,price:0.002772,sigs:[{k:'sig_normal',hot:false}]},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',size:0.01,pnl:0.06,severity:38,escaping:false,_frozen:true,entryPrice:0.0008,price:0.000848,sigs:[{k:'sig_top31',hot:false}]},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',size:0.01,pnl:-0.21,severity:62,escaping:false,_frozen:true,entryPrice:0.05,price:0.0395,sigs:[{k:'sig_top45',hot:false},{k:'sig_5mweak',hot:false}]},
+ {sym:'RUGRUN',address:'RUGRUNzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',size:0.01,pnl:-0.61,severity:88,escaping:true,entryPrice:0.003,price:0.00117,sigs:[{k:'sig_mintback',hot:true},{k:'sig_top58',hot:true}]},
+];}
+let POS=seedPositions();
+
+let RISK={open:1,openMax:20,expo:0.2857,expoMax:1.0,loss:0,lossMax:0.5,consec:0,consecMax:3,killed:false};
+const P=x=>Math.round(x*100)+'%';
+const gst=(t,i)=>t.died===null?(i<5?'pass':'pass'):i<t.died?'pass':i===t.died?'fail':'skip';
+
+/* ── backend normalize ── */
+function deriveDied(action,reason){
+  if(action==='BUY'||action==='ACTION')return null;
+  const r=(reason||'').toLowerCase();
+  if(/honeypot|lp|mint|security|bundler|dev|top10|安全|避雷/.test(r))return 1;
+  if(/confluence|smart.?money|共识/.test(r))return 2;
+  if(/suppress|rank|抑制|排序/.test(r))return 3;
+  if(/llm|conviction|crowd|late|拥挤/.test(r))return 4;
+  return 1;
+}
+function normalize(data){
+  const list=(data.decisions||[]).map(d=>{
+    const dec=d.decision||d, v=dec.verdict||{}, f=dec.features||{}, ex=d.exec||dec.exec||{};
+    let sym=dec.symbol||'?', inj=false; if(/redact/i.test(sym)){inj=true;sym='INJECT';}
+    const isAct=(dec.action==='BUY'||dec.action==='ACTION'||dec.status==='action');
+    const t={sym,inj,addr:(dec.address||'').slice(0,8)+'…',
+      hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
+      bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
+      smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
+      v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
+      warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
+      reason:dec.reason,address:dec.address,
+      exit:(ex&&ex.hard_sl)?`SL ${ex.hard_sl} · TP ${(ex.tp_ladder||[]).join(' / ')} · trailing ${ex.trailing||''}`:'',
+      thesis:v.thesis||''};
+    t.pri=isAct?(dec.priority??priCalc(t)):0; return t;
+  });
+  const p=data.portfolio||{};
+  const risk={open:p.open_positions??1,openMax:p.max_concurrent??2,expo:p.total_exposure??0,expoMax:p.max_total_exposure??1,
+    loss:p.realized_loss_today??0,lossMax:p.daily_loss_cap??0.5,consec:p.consec_losses??0,consecMax:p.kill_switch_consec??3,killed:p.kill_switch??false};
+  const positions=(data.positions||[]).map(q=>({sym:q.symbol||q.sym,addr:(q.address||'').slice(0,8)+'…',address:q.address,
+    size:q.size_sol||q.size||0,pnl:q.pnl||0,severity:q.severity||0,escaping:(q.severity||0)>=70,
+    price:q.cur_price||0,entryPrice:q.entry_price||0,
+    sigs:(q.signals||[]).map(s=>typeof s==='string'?{t:s,hot:false}:s)}));
+  return {list,risk,positions};
+}
+
+/* ── static icons ── */
+document.getElementById('ic-logo').innerHTML=fill('zap');
+document.getElementById('ic-pipe').insertAdjacentHTML('afterbegin',svg('layers'));
+document.getElementById('ic-log').insertAdjacentHTML('afterbegin',svg('trend'));
+document.getElementById('logTog').innerHTML=svg('chev');
+document.getElementById('logTog').onclick=()=>document.querySelector('.logwrap').classList.toggle('collapsed');
+document.getElementById('ic-esc').insertAdjacentHTML('afterbegin',svg('siren'));
+document.getElementById('ic-funnel').insertAdjacentHTML('afterbegin',svg('target'));
+document.getElementById('ic-cog').innerHTML=svg('cog');
+document.getElementById('ic-buyz').innerHTML=svg('zap');
+document.getElementById('gearBtn').innerHTML=svg('cog');
+document.getElementById('pipeGear').innerHTML=svg('cog');
+document.getElementById('ic-pipecog').innerHTML=svg('cog');
+document.getElementById('pipeGear').onclick=openPipe;
+document.getElementById('tokFilter').innerHTML=svg('siren');
+document.getElementById('tokFilter').onclick=toggleOnlyHeld;
+document.getElementById('chainPillWrap').onclick=e=>{e.stopPropagation();if(e.target.closest('#chainMenu'))return;toggleChainMenu();};
+document.addEventListener('click',e=>{if(!e.target.closest('#chainPillWrap'))closeChainMenu();});
+
+/* ── KPI ── */
+let cycles=1;
+function passG(g){return T.filter(t=>t.died===null||t.died>g).length;}
+function killAt(g){return T.filter(t=>t.died===g).length;}
+function kpiData(){
+  const act=T.filter(t=>t.status==='action').length;
+  const esc=POS.filter(p=>p.escaping).length;
+  return [
+    [t('kpi_scan'),'scan','var(--teal)',cycles*T.length,t('kpi_sub_scan',cycles)],
+    [t('kpi_safety'),'shield','var(--lime)',passG(1),t('kpi_sub_block',killAt(1))],
+    [t('kpi_consensus'),'users','var(--lime)',passG(2),t('kpi_sub_block',killAt(2))],
+    [t('kpi_pending'),'target','var(--lime)',act,t('kpi_sub_pending')],
+    [t('kpi_pos'),'gauge','var(--lime)',POS.length+'<small>/'+RISK.openMax+'</small>',t('kpi_sub_expo',(+RISK.expo).toFixed(4))],
+    [t('kpi_escape'),'siren','var(--clay)',esc,esc?t('kpi_sub_escape_act'):t('kpi_sub_escape_ok')],
+    [t('kpi_catch'),'target','var(--clay)','100%',t('kpi_catch_sub')],
+  ];
+}
+function renderKpis(flash){
+  document.getElementById('kpis').innerHTML=kpiData().map((d,i)=>{
+    const alert=(i===5&&d[3]>0);
+    return `<div class="kpi ${alert?'alert':''}" style="--ac:${d[2]}"><div class="k">${svg(d[1])}${d[0]}</div>
+      <div class="v ${flash?'flash':''}">${d[3]}</div><div class="sub">${d[4]}</div></div>`;}).join('');
+}
+
+/* ── pipeline table (sorted: action by priority desc, then reject) ── */
+let sel=-1;   // 默认不选中、不展开解读（笔记本屏幕省空间）；点击行展开，再点收起
+function ordered(){return [...T].map((t,i)=>({...t,_i:i})).sort((a,b)=>{
+  if(a.status!==b.status)return a.status==='action'?-1:1;
+  return b.pri-a.pri;});}
+function renderRows(){
+  let rows=ordered();
+  if(onlyHeld){const held=new Set(POS.map(p=>p.address||p.addr).filter(Boolean));rows=rows.filter(t=>held.has(t.address));}
+  const box=document.getElementById('rows');
+  if(!rows.length){
+    if(loadingScreen){
+      box.innerHTML=Array.from({length:6},()=>'<tr class="skelrow"><td colspan="11"><div class="skel-bar"></div></td></tr>').join('');
+    }else{
+      box.innerHTML='<tr><td colspan="11" style="padding:26px;text-align:center;color:var(--dim2)">'+(onlyHeld?t('empty_onlyheld'):t('empty_none'))+'</td></tr>';
+    }
+    return;
+  }
+  box.innerHTML=rows.map(t=>{
+    const rc=t.status==='action'?(t.warn?COL.WARN:COL.ACTION):COL.SKIP;
+    const gates=GATE_ICONS.map((ic,i)=>{const s=gst(t,i);const inner=s==='fail'?svg('skull'):s==='pass'?svg(ic):'';
+      return `<div class="pip ${s}" data-tip="${i+1}. ${gateName(i)}　${t2('gatetip'+i)}　|　${t2('gate_self')}${t2('gst_'+s)}">${inner}</div>`;}).join('');
+    let last;
+    if(t.status==='action'){
+      last=`<button class="buybtn ${t.warn?'warn':''}" onclick="event.stopPropagation();openBuy(${t._i})">${svg('zap')}${t2('amt_lbl')} ${buyAmount} ${NATIVE_UNIT[curChain]}</button>`;
+    }else{
+      const diedGate=gateName(t.died);
+      const rbLabel=t.died===1?t2('rb_safety'):t.died===2?t2('rb_cons'):t.died===4?'LLM':'SKIP';
+      last=`<span class="rb has-tip" style="--rc:${rc}" data-tip="${t2('rb_tip',diedGate,reasonOf(t)||t2('rb_nopass'))}">${rbLabel}</span>`;
+    }
+    const priCls=t.pri>=80?'hi':t.pri>=55?'mid':'';
+    const hasPos=POS.some(p=>(p.address||'')&&(p.address||'')===(t.address||''));
+    const radar=hasPos?`<span class="radar" data-tip="${t2('radar_tip')}"></span>`:'';
+    return `<tr data-i="${t._i}" class="${t._i===sel?'sel':''} ${t.status==='action'?'act':''}" style="--rc:${rc}">
+      <td><span class="sym"><span class="tk" onclick="event.stopPropagation();copyTicker(this)" title="${t2('tk_copy_title')}">${t.sym}</span>${radar}${t.inj?`<span class="inj" data-tip="${t2('inj_tip')}">${t2('inj_label')}</span>`:''}${caCell(t)}</span></td>
+      <td><div class="gates">${gates}</div></td>
+      <td><span class="m ${t.hp?'bad':!t.ren?'warn':''}">${t.hp?t2('safe_honeypot'):t.ren?t2('safe_renounced'):t2('safe_not_renounced')}</span></td>
+      <td><span class="m ${t.bund>.30?'bad':''}">${P(t.bund)}</span></td>
+      <td><span class="m ${t.dev>.10?'bad':''}">${P(t.dev)}</span></td>
+      <td><span class="m ${t.top10>.40?'bad':''}">${P(t.top10)}</span></td>
+      <td><span class="m has-tip ${t.smc<1?'bad':''}" data-tip="${t2('smc_tip',t.degen,t.kol,t.smc)}">${t.degen}/${t.kol}</span></td>
+      <td><span class="m has-tip ${t.crowd==='late'?'bad':t.crowd==='crowded'?'warn':''}" data-tip="${t2('timing_label')+'　|　'+(I18N[lang]['crowdtip_'+t.crowd]?t2('crowdtip_'+t.crowd):t2('crowd_none_tip'))}">${I18N[lang]['crowd_'+t.crowd]?t2('crowd_'+t.crowd):t.crowd}</span></td>
+      <td>${t.v==='-'?`<span class="has-tip" style="color:var(--dim2)" data-tip="${t2('llm_none_tip')}">—</span>`:`<span class="vd has-tip ${t.v}" data-tip="${t2('vd_tip',t.v.toUpperCase(),t2('llmtip_'+t.v)||'',(+t.conv).toFixed(2))}">${t.v.toUpperCase()}</span>`}</td>
+      <td>${t.status==='action'?`<span class="pri ${priCls}">${t.pri}<small>${t2('pri_label')}</small></span>`:'<span style="color:var(--dim2)">—</span>'}</td>
+      <td>${last}</td>
+    </tr>`;}).join('');
+  document.querySelectorAll('#rows tr').forEach(r=>r.onclick=()=>{const i=+r.dataset.i;sel=(sel===i?-1:i);renderRows();renderDetail();});
+}
+/* renderRows 内部把行对象命名为 t（沿用旧代码），与取词函数 t() 撞名，故行内取词改用别名 t2 = 全局 t */
+const t2=(k,...a)=>I18N[lang]&&typeof (I18N[lang][k])==='function'?I18N[lang][k](...a):(I18N[lang]&&I18N[lang][k]!==undefined?I18N[lang][k]:t(k,...a));
+function renderDetail(){
+  const r=(sel>=0?T[sel]:null); if(!r){document.getElementById('detail').innerHTML='';return;}
+  let right;
+  if(r.status==='action'){
+    right=`<div class="lab">${t('detail_passed',r.pri,r.size,r.warn)}</div>
+      <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
+  }else{
+    right=`<div class="lab">${t('detail_died_lab',gateName(r.died))}</div><span class="clay">${reasonOf(r)}</span>`;
+  }
+  const action=r.status==='action'
+    ? `<button class="buybtn ${r.warn?'warn':''}" onclick="openBuy(${sel})">${svg('zap')}${t('amt_lbl')} ${buyAmount} ${NATIVE_UNIT[curChain]}</button>`
+    : `<span class="rb" style="--rc:${COL.SKIP}">${t('detail_filtered')}</span>`;
+  const llmState=(r.v==='-'?t('detail_no_llm'):r.v.toUpperCase()+' · conv '+(+r.conv).toFixed(2));
+  document.getElementById('detail').innerHTML=`
+    <div class="dl"><h4>${r.sym}</h4><br>${action}</div>
+    <div class="dr">${right}<div style="margin-top:8px;color:var(--dim);font-size:10.5px">${t('detail_llm_note',llmState)}</div></div>`;
+}
+
+/* ── escape monitor ── */
+function sevLevel(s){return s>=70?t('sev_escape'):s>=50?t('sev_high'):s>=30?t('sev_watch'):t('sev_stable');}
+function renderPositions(){
+  const box=document.getElementById('positions');
+  const alerts=POS.filter(p=>p.escaping).length;
+  document.getElementById('escCnt').textContent=POS.length?t('esc_cnt',POS.length,RISK.openMax,alerts):'';
+  if(!POS.length){box.innerHTML=`<div class="posempty">${t('pos_empty')}</div>`;return;}
+  box.innerHTML=POS.map((p,i)=>{
+    const hot=p.severity>=70;
+    // 左侧筛选判定为非全绿/掉榜 → 弱红底；首次进入该状态才闪一下
+    const key=p.address||p.addr||p.sym;
+    let acls=p.escaping?'esc':'';
+    if(posIsAlert(p)){acls+=' falert';if(!escAlertSet.has(key)){acls+=' flash';escAlertSet.add(key);}}
+    else escAlertSet.delete(key);
+    return `<div class="pos ${acls}">
+      <div class="top"><div><span class="ps">${p.sym}</span>${caCell(p)}${p.price?`<small class="px">${t('pos_price',fmtPrice(p.price),fmtPrice(p.entryPrice))}</small>`:''}</div>
+        <span class="pnl ${p.pnl>=0?'up':'dn'}">${p.pnl>=0?'+':''}${(p.pnl*100).toFixed(1)}%</span>
+        <button class="escbtn" onclick="escape_(${i})">${svg('door')}${p.escaping?t('escbtn_now'):t('escbtn')}</button>
+        <button class="xbtn" title="${t('unmon_btn_title')}" onclick="unmonitor_(${i})">×</button></div>
+      <div class="sev"><div class="b"><i class="${hot?'hot':''}" style="width:${p.severity}%"></i></div><span class="lv" style="${hot?'color:var(--clay)':''}">${sevLevel(p.severity)} ${p.severity}</span></div>
+      <div class="sigs">${p.sigs.map(s=>`<div class="sig ${s.hot?'hot':''}">${svg(s.hot?'warn':'shield')}${sigText(s)}</div>`).join('')}</div>
+    </div>`;}).join('');
+}
+
+/* ── funnel + risk mini ── */
+function renderFunnel(){
+  const N=T.length, act=T.filter(t=>t.status==='action').length;
+  const F=[[gateName(0),'scan',N,0,false],[gateName(1),'shield',passG(1),killAt(1),false],[gateName(2),'users',passG(2),killAt(2),false],
+    [gateName(3),'filter',passG(3),killAt(3),true],[gateName(4),'brain',passG(4),killAt(4),false],[gateName(5),'target',act,0,false]];
+  const max=N||1;
+  document.getElementById('funnel').innerHTML=F.map(f=>`
+    <div class="fn"><span class="lab">${svg(f[1])}${f[0]}</span>
+      <div class="track"><i class="${f[4]?'ml':''}" data-w="${f[2]/max*100}"></i>${f[3]?`<span class="kil">−${f[3]}</span>`:''}</div>
+      <span class="n">${f[2]}</span></div>`).join('');
+  document.getElementById('funnelSub').textContent=t('funnel_sub',N,act);
+  const bars=[[t('risk_open'),POS.length,RISK.openMax,''],[t('risk_expo'),+(+RISK.expo).toFixed(3),RISK.expoMax,' SOL'],[t('risk_loss'),RISK.loss,RISK.lossMax,' SOL'],[t('risk_streak'),RISK.consec,RISK.consecMax,'']];
+  document.getElementById('riskmini').innerHTML=bars.map(b=>{const r=b[2]?b[1]/b[2]:0,hot=r>=1;
+    return `<div class="rkrow"><div class="h"><span>${b[0]}</span><b class="${hot?'hot':''}">${b[1]}${b[3]} / ${b[2]}${b[3]}</b></div>
+    <div class="t"><i class="${hot?'hot':''}" data-w="${Math.min(r,1)*100}"></i></div></div>`;}).join('');
+  requestAnimationFrame(()=>setTimeout(()=>{
+    document.querySelectorAll('#funnel .track i').forEach(i=>i.style.width=i.dataset.w+'%');
+    document.querySelectorAll('#riskmini .t i').forEach(i=>i.style.width=i.dataset.w+'%');},90));
+  // 顶部 KILL 指示 pill 已移除（kill-switch 风控逻辑仍在后端 + 右下风控迷你条显示）
+}
+
+function renderAll(flash){renderKpis(flash);renderRows();renderDetail();renderPositions();renderFunnel();}
+
+/* ── log ── */
+const feed=document.getElementById('logfeed');
+function logRow(a,sym,reason,color){
+  const ts=new Date().toISOString().substr(11,8);
+  const row=document.createElement('div');row.className='lg';
+  row.innerHTML=`<span class="ts">${ts}</span><span class="a" style="color:${color}">${a}</span><span class="s">${sym}</span><span class="r">${reason}</span>`;
+  feed.insertBefore(row,feed.firstChild);
+  while(feed.children.length>60)feed.removeChild(feed.lastChild);
+}
+function logScreen(){
+  T.forEach(t=>{
+    if(t.status==='action')logRow('SCREEN',t.sym,window.t('log_screen_reason',t.size,t.pri),COL.ACTION);
+    else logRow('FILTER',t.sym,reasonOf(t),COL.SKIP);
+  });
+}
+
+/* ── clock / telemetry ── */
+function tick(){document.getElementById('clock').textContent=new Date().toISOString().substr(11,8)+'Z';}
+function telemetry(){if(source==='demo')document.getElementById('lat').textContent=(150+Math.round(Math.random()*90))+'ms';}
+
+/* ── position risk drift (demo escape showcase) ── */
+function driftPositions(){
+  POS.forEach(p=>{
+    if(p.escaping||p._frozen)return;
+    p.severity=Math.min(86,p.severity+8+Math.random()*6);
+    p.pnl=+(p.pnl-0.02-Math.random()*0.03).toFixed(3);
+    const s=p.severity;
+    p.sigs=[];
+    if(s>=30)p.sigs.push({k:'sig_top10sell',hot:false});
+    if(s>=50)p.sigs.push({k:'sig_devout',hot:false});
+    if(s>=70){p.sigs.push({k:'sig_lppull',hot:true});p.escaping=true;
+      logRow('ALERT',p.sym,t('alert_lp'),COL.SKIP);}
+    if(!p.sigs.length)p.sigs.push({k:'sig_normal',hot:false});
+  });
+}
+
+/* ── scan cycle ── */
+let scanInFlight=false;
+async function scanCycle(){
+  const sc=document.getElementById('scanning');
+  if(source==='backend'){
+    if(!bePolling||scanInFlight)return;       // 防重入：上一次没回来就跳过本轮，避免请求堆积雪崩
+    scanInFlight=true;
+    sc.classList.add('on');const t0=performance.now();
+    try{
+      const r=await fetch(API+'/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      if(source!=='backend')return;        // 在途请求返回前用户已切走（如切 DEMO）→ 丢弃，不覆盖
+      const {list,risk,positions}=normalize(data);
+      loadingScreen=false;                 // 拿到后端响应，结束骨架
+      T=list; RISK=risk; if(positions)POS=positions; if(sel>=T.length)sel=-1;
+      document.getElementById('lat').textContent=Math.round(performance.now()-t0)+'ms';
+      cycles++;renderAll(true);logScreen();
+    }catch(e){bePolling=false;toast(t('toast_be_fail',e.message),'err');}
+    finally{scanInFlight=false;sc.classList.remove('on');}
+    return;
+  }
+  // demo
+  sc.classList.add('on');
+  const rows=[...document.querySelectorAll('#rows tr')];
+  rows.forEach((r,i)=>setTimeout(()=>{r.classList.add('ping');setTimeout(()=>r.classList.remove('ping'),700);},i*90));
+  setTimeout(()=>{cycles++;driftPositions();renderAll(true);telemetry();sc.classList.remove('on');},rows.length*90+250);
+}
+
+/* ── source toggle ── */
+function setSource(s){
+  source=s;bePolling=false;
+  document.getElementById('srcDemo').classList.toggle('on',s==='demo');
+  document.getElementById('srcBe').classList.toggle('on',s==='backend');
+  document.getElementById('demoBar').classList.toggle('on',s==='demo');  // 演示横幅仅 DEMO 显示
+  const mcp=document.getElementById('mcpPill');
+  if(s==='backend'){mcp.textContent='LIVE';mcp.style.color='var(--lime)';
+    if(beReady){bePolling=true;scanCycle();}              // 环境已有 key，直接轮询，不弹框
+    else{toast(t('toast_be_switched'),'ok');openCfg();}}
+  else{mcp.textContent='DEMO';mcp.style.color='var(--amber)';loadingScreen=false;T=freshSeed();POS=seedPositions();RISK={open:1,openMax:20,expo:0.2857,expoMax:1.0,loss:0,lossMax:0.5,consec:0,consecMax:3,killed:false};sel=-1;cycles=1;renderAll(false);feed.innerHTML='';logScreen();}
+}
+
+/* ── config modal ── */
+function openCfg(){document.getElementById('cfgScrim').classList.add('on');}
+function closeCfg(){document.getElementById('cfgScrim').classList.remove('on');}
+document.getElementById('gearBtn').onclick=openCfg;
+/* 仅当“按下”和“松开”都在遮罩本身时才关闭——避免在输入框里拖拽复制、松手落在遮罩上误关 */
+function dismissOnBackdrop(id,fn){
+  const el=document.getElementById(id);let downSelf=false;
+  el.addEventListener('mousedown',e=>{downSelf=(e.target===el);});
+  el.addEventListener('click',e=>{if(e.target===el&&downSelf)fn();downSelf=false;});
+}
+dismissOnBackdrop('cfgScrim',closeCfg);
+
+/* ── 筛选设置弹窗（热榜命令 + 轮询间隔）── */
+async function openPipe(){
+  document.getElementById('pollSec').value=+(pollMs/1000).toFixed(1);
+  const cmdEl=document.getElementById('trendCmd');
+  cmdEl.value=t('pipe_loading');document.getElementById('pipeState').textContent='';
+  try{
+    const r=await fetch(API+'/api/settings');
+    const d=await r.json();
+    defaultTrendCmd=d.default_trending_cmd||'';
+    cmdEl.value=d.trending_cmd||defaultTrendCmd;
+  }catch(e){cmdEl.value='';document.getElementById('pipeState').textContent=t('pipe_be_off');}
+  document.getElementById('pipeScrim').classList.add('on');
+}
+function closePipe(){document.getElementById('pipeScrim').classList.remove('on');}
+function resetPipeCmd(){if(defaultTrendCmd)document.getElementById('trendCmd').value=defaultTrendCmd;}
+dismissOnBackdrop('pipeScrim',closePipe);
+
+/* ── 通用二次确认弹窗（替代浏览器 confirm）── */
+let _confirmCb=null;
+function confirmDialog(title,msg,cb){
+  document.getElementById('confirmTitle').textContent=title;
+  document.getElementById('confirmMsg').innerHTML=msg;
+  _confirmCb=cb;
+  document.getElementById('confirmScrim').classList.add('on');
+}
+function closeConfirm(){document.getElementById('confirmScrim').classList.remove('on');_confirmCb=null;}
+document.getElementById('confirmOk').onclick=()=>{const cb=_confirmCb;closeConfirm();if(cb)cb();};
+dismissOnBackdrop('confirmScrim',closeConfirm);
+function applyPollInterval(sec){
+  pollMs=Math.max(1000,Math.round(sec*1000));
+  if(pollTimer)clearInterval(pollTimer);
+  pollTimer=setInterval(scanCycle,pollMs);
+}
+async function savePipe(){
+  const ss=document.getElementById('pipeState');
+  const sec=parseFloat(document.getElementById('pollSec').value);
+  if(!sec||sec<1){toast(t('toast_poll_min'),'err');return;}
+  const cmd=document.getElementById('trendCmd').value.trim();
+  ss.innerHTML='<span class="spin"></span>'+t('saving');
+  try{
+    const r=await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trending_cmd:cmd})});
+    if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.detail||('HTTP '+r.status));}
+    applyPollInterval(sec);
+    ss.textContent=t('pipe_applied',pollMs/1000);
+    toast(t('toast_pipe_saved'),'ok');
+    if(source==='backend'&&bePolling)scanCycle();
+  }catch(e){ss.textContent='';toast(t('toast_pipe_fail',e.message),'err');}
+}
+function applyLiveLabel(){
+  document.getElementById('liveLbl').textContent=liveMode?t('live_lbl_live'):t('live_lbl_shadow');
+  const v=document.getElementById('modePill');v.textContent=liveMode?t('mode_live'):t('mode_shadow');v.style.color=liveMode?'var(--clay)':'var(--amber)';
+}
+function onLive(cb){
+  if(cb.checked){
+    cb.checked=false;                          // 先回退，确认后再开
+    confirmDialog(t('confirm_live_title'),t('confirm_live_msg'),
+      ()=>{document.getElementById('liveTg').checked=true;liveMode=true;applyLiveLabel();});
+    return;
+  }
+  liveMode=false;applyLiveLabel();
+}
+const val=id=>document.getElementById(id).value.trim();
+async function saveCfg(){
+  const body={api_key:val('apiKey'),signing_key:val('signKey'),chain:curChain,mode:liveMode?'LIVE':'SHADOW'};
+  if(!body.api_key&&!beReady){toast(t('toast_need_key'),'err');return;}  // 后端已有环境 key 则可留空
+  const ss=document.getElementById('saveState');ss.innerHTML='<span class="spin"></span>'+t('saving');
+  try{
+    const r=await fetch(API+'/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    ss.textContent=t('cfg_saved');
+    beReady=true;
+    if(source==='backend'){bePolling=true;scanCycle();}
+  }catch(e){ss.textContent='';toast(t('toast_cfg_fail',e.message),'err');}
+}
+
+/* ── buy modal ── */
+let buyIdx=-1;
+function openBuy(i){
+  buyIdx=i;const r=T[i];
+  document.getElementById('buySym').textContent=r.sym;
+  document.getElementById('buySize').value=buyAmount;
+  document.getElementById('buyExit').innerHTML=t('buy_exit_html',exitOf(r),thesisOf(r));
+  const rw=document.getElementById('buyRiskWarn');
+  if(r.warn){rw.style.display='block';rw.className='mwarn danger';rw.textContent=t('buy_riskwarn');}
+  else rw.style.display='none';
+  const mn=document.getElementById('buyModeNote');
+  mn.className='mwarn'+(liveMode?' danger':'');
+  mn.textContent=liveMode?t('buy_mode_live'):t('buy_mode_shadow');
+  document.getElementById('buyState').textContent='';
+  document.getElementById('buyScrim').classList.add('on');
+}
+function closeBuy(){document.getElementById('buyScrim').classList.remove('on');}
+dismissOnBackdrop('buyScrim',closeBuy);
+async function doBuy(){
+  const r=T[buyIdx];const size=parseFloat(document.getElementById('buySize').value)||r.size;
+  if(source==='backend'){
+    const bs=document.getElementById('buyState');bs.innerHTML='<span class="spin"></span>'+t('buy_ordering');
+    try{
+      const resp=await fetch(API+'/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:r.address||r.addr,size_sol:size})});
+      if(!resp.ok)throw new Error('HTTP '+resp.status);
+      toast(t('toast_buy',liveMode,r.sym,size),'ok');closeBuy();scanCycle();
+    }catch(e){bs.textContent='';toast(t('toast_buy_fail',e.message),'err');}
+    return;
+  }
+  // demo: 加进持仓 + 更新风控 + 日志
+  POS.push({sym:r.sym,addr:r.addr,address:r.address,size,pnl:0,severity:18,escaping:false,sigs:[{k:'sig_normal',hot:false}]});
+  RISK.open=POS.length;RISK.expo=+(RISK.expo+size).toFixed(4);
+  T[buyIdx].status='bought';
+  logRow('BUY',r.sym,t('buy_log_reason',liveMode,size,exitOf(r)),COL.ACTION);
+  toast(t('toast_buy_demo',liveMode,r.sym,size),'ok');
+  closeBuy();renderAll(true);
+}
+
+/* ── escape / sell ── */
+function escape_(i){
+  const p=POS[i];if(!p)return;
+  confirmDialog(t('sell_title',p.sym),t('sell_msg',p.sym,p.size,p.escaping),()=>doSellPos(i));
+}
+function doSellPos(i){
+  const p=POS[i];if(!p)return;
+  if(source==='backend'){
+    fetch(API+'/api/sell',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:p.address||p.addr})})
+      .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);toast(t('toast_sell_sent',p.sym),'ok');scanCycle();})
+      .catch(e=>toast(t('toast_sell_fail',e.message),'err'));
+    return;
+  }
+  RISK.expo=+Math.max(0,RISK.expo-p.size).toFixed(4);
+  logRow('SELL',p.sym,t('sell_log',p.escaping,(p.pnl>=0?'+':'')+(p.pnl*100).toFixed(1)+'%'),p.escaping?COL.SKIP:COL.ACTION);
+  POS.splice(i,1);RISK.open=POS.length;
+  toast(t('toast_sold',p.sym),'ok');renderAll(true);
+}
+
+/* ── 取消监控（不卖出，仅从逃生列表移除）── */
+function unmonitor_(i){
+  const p=POS[i];
+  confirmDialog(t('unmon_title',p.sym),t('unmon_msg',p.sym),()=>doUnmonitor(i));
+}
+function doUnmonitor(i){
+  const p=POS[i];if(!p)return;
+  if(source==='backend'){
+    fetch(API+'/api/unmonitor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:p.address||p.addr})})
+      .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);toast(t('toast_unmon',p.sym),'ok');scanCycle();})
+      .catch(e=>toast(t('toast_unmon_fail',e.message),'err'));
+    return;
+  }
+  POS.splice(i,1);RISK.open=POS.length;toast(t('toast_unmon',p.sym),'ok');renderAll(true);
+}
+
+/* ── toast ── */
+let toastT;
+function toast(m,kind){const el=document.getElementById('toast');el.textContent=(kind==='ok'?'✓ ':'⚠ ')+m;el.className='toast on '+(kind||'err');clearTimeout(toastT);toastT=setTimeout(()=>el.className='toast '+(kind||'err'),4200);}
+/* 点击 Ticker 复制到剪贴板 */
+function copyTicker(el){
+  const tk=(el.textContent||'').trim();if(!tk)return;
+  const done=()=>toast(t('toast_copied',tk),'ok');
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(tk).then(done).catch(()=>fallbackCopy(tk,done));
+  }else fallbackCopy(tk,done);
+}
+function fallbackCopy(tk,done){
+  const ta=document.createElement('textarea');ta.value=tk;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');done();}catch(e){toast(t('toast_copy_fail'),'err');}
+  document.body.removeChild(ta);
+}
+
+/* 闸门图标即时 tooltip（原生 title 太慢）——事件委托挂在稳定容器上，行重渲染也不丢 */
+(function(){
+  const tip=document.getElementById('tip'), host=document;   // 全局委托：表头图标等任意 [data-tip] 都生效
+  if(!tip)return;
+  function place(el){
+    const r=el.getBoundingClientRect();
+    let left=r.left+r.width/2-tip.offsetWidth/2;
+    left=Math.max(8,Math.min(window.innerWidth-tip.offsetWidth-8,left));
+    let top=r.top-tip.offsetHeight-8;
+    if(top<8)top=r.bottom+8;            // 顶部放不下就放图标下方
+    tip.style.left=left+'px';tip.style.top=top+'px';
+  }
+  host.addEventListener('mouseover',e=>{
+    const p=e.target.closest('[data-tip]');if(!p)return;
+    tip.textContent=p.getAttribute('data-tip');tip.classList.add('on');place(p);
+  });
+  host.addEventListener('mouseout',e=>{
+    if(e.target.closest('[data-tip]'))tip.classList.remove('on');
+  });
+})();
+
+/* ── i18n 应用：刷新所有静态文案 + 重渲染动态区 ── */
+function applyI18n(){
+  document.documentElement.lang = (lang==='zh'?'zh-CN':'en');
+  document.title=t('title');
+  document.querySelectorAll('[data-i18n]').forEach(el=>{el.innerHTML=t(el.getAttribute('data-i18n'));});
+  document.querySelectorAll('[data-i18n-title]').forEach(el=>{el.title=t(el.getAttribute('data-i18n-title'));});
+  document.querySelectorAll('[data-i18n-tip]').forEach(el=>{el.setAttribute('data-tip',t(el.getAttribute('data-i18n-tip')));});
+  document.querySelectorAll('[data-i18n-ph]').forEach(el=>{el.placeholder=t(el.getAttribute('data-i18n-ph'));});
+  document.getElementById('langBtn').textContent=(lang==='zh'?'中文':'EN');
+  const tf=document.getElementById('tokFilter');if(tf)tf.setAttribute('data-tip',t(onlyHeld?'tokf_on':'tokf_off'));
+  applyLiveLabel();
+  renderAll(false);
+  if(source==='demo'){feed.innerHTML='';logScreen();}   // 重置日志为当前语言
+}
+function switchLang(){lang=(lang==='zh'?'en':'zh');localStorage.setItem('aitrader_lang',lang);applyI18n();}
+
+/* ── init ── */
+applyI18n();tick();
+setInterval(tick,1000);
+pollTimer=setInterval(scanCycle,pollMs);
+setInterval(telemetry,2600);
+
+/* 页面加载即探测后端：环境已有 key 就自动连真实数据，免去每次重填 */
+async function autoConnect(){
+  // 链状态以浏览器缓存为准（不写 env）
+  const savedChain=localStorage.getItem('aitrader_chain')||'sol';
+  curChain=savedChain;
+  document.getElementById('chainPill').textContent=CHAIN_LABEL[curChain]||'SOL';
+  buyAmount=loadBuyAmt(curChain);
+  const ai=document.getElementById('amtInput');if(ai)ai.value=buyAmount;
+  updateAmtUnit();
+  try{
+    const r=await fetch(API+'/api/status'); if(!r.ok)throw 0;
+    const d=await r.json(); beReady=!!d.has_key;
+    if(d.public_demo){
+      // 公开只读演示：后端定时广播真实筛选缓存。锁定 UI 为只读，链跟随后端。
+      document.body.classList.add('publicro');
+      document.getElementById('publicBar').classList.add('on');
+      if(d.chain&&d.chain!==curChain){curChain=d.chain;document.getElementById('chainPill').textContent=CHAIN_LABEL[curChain]||'SOL';}
+      setSource('backend');
+      return;
+    }
+    if(d.has_key){
+      // 把后端链同步到浏览器保存的链
+      if(d.chain!==curChain){
+        try{await fetch(API+'/api/chain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:curChain})});}catch(e){}
+      }
+      setSource('backend');                 // 有后端+key → 直接轮询真实数据（scanCycle 会结束骨架）
+      toast(t('toast_connected',CHAIN_LABEL[curChain]),'ok');
+      return;
+    }
+    throw 0;                                 // 有后端但没 key → 也退回演示
+  }catch(e){
+    // 连不上后端（如 GitHub Pages 静态托管）/无 key → 自动进 DEMO 演示，显示示例数据
+    setSource('demo');
+  }
+}
+autoConnect();
+</script>
+</body>
+</html>
