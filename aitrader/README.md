@@ -41,7 +41,8 @@ aitrader/
 
 ## 启动
 ```bash
-cd ~/vscode_docs/aitrader
+# 在 skillmarket-demos 仓库根下
+cd aitrader
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --host 127.0.0.1 --port 8000
