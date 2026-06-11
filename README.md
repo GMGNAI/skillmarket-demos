@@ -1,45 +1,51 @@
+<div align="center">
+
+English | [简体中文](README.zh.md)
+
+</div>
+
 # skillmarket-demos
 
-Community-contributed demos built with the GMGN OpenAPI, provided for reference and learning only. Security is not guaranteed. Use any trading functions at your own risk. 基于 GMGN OpenAPI 制作的演示 Demo，由社群成员贡献，仅供学习交流参考，安全性不作保证。如使用其中的交易功能，请自行评估代码安全性并承担相应交易风险。
+Community-contributed demos built with the GMGN OpenAPI, provided for reference and learning only. Security is not guaranteed. Use any trading functions at your own risk.
 
-## 目录结构 / Layout
+## Layout
 
-每个 demo 一个子目录；GitHub Pages 在线演示放在顶层 `docs/<demo>/`。
 Each demo lives in its own subdirectory; the GitHub Pages live demo for each is under the top-level `docs/<demo>/`.
 
 ```
 skillmarket-demos/
-├── aitrader/              # GMGN AI Trader：看板筛、人成交（FastAPI + 单页前端）
+├── aitrader/              # GMGN AI Trader: machine screens, you trade (FastAPI + single-page frontend)
 │   ├── app.py  static/  README.md  SPEC.md ...
-├── docs/                  # GitHub Pages 发布根（按 demo 分子目录）
+├── docs/                  # GitHub Pages publish root (one subfolder per demo)
 │   └── aitrader/
-│       └── index.html     # = aitrader/static/index.html 副本（钩子自动同步）
+│       └── index.html     # = aitrader/static/index.html copy (auto-synced by the hook)
 ├── scripts/git-hooks/
-│   └── pre-commit         # 提交前自动同步各 demo 的 static → docs/<demo>/
-└── README.md
+│   └── pre-commit         # on commit, auto-syncs each demo's static → docs/<demo>/
+├── README.md              # this file (English)
+└── README.zh.md           # 简体中文
 ```
 
 ## Demos
 
-| Demo | 说明 | 在线演示 / Live |
+| Demo | Description | Live |
 |---|---|---|
-| [aitrader](aitrader/) | 基于 GMGN Skills/MCP 的本地 memecoin 筛选 + 一键成交看板：确定性规则抓全 → 评分砍狠 → LLM 只解释幸存者 → 你按下成交。详见 [aitrader/README.md](aitrader/README.md) | https://gmgnai.github.io/skillmarket-demos/aitrader/ |
+| [aitrader](aitrader/) | Local memecoin screening + one-click trading dashboard built on GMGN Skills/MCP: deterministic rules cast wide → scoring cuts hard → LLM only explains survivors → you press to trade. See [aitrader/README.md](aitrader/README.md). | https://gmgnai.github.io/skillmarket-demos/aitrader/ |
 
-## 新增一个 demo / Adding a demo
+## Adding a demo
 
-1. 新建子目录 `<demo>/`，前端源文件放在 `<demo>/static/index.html`。
-2. 提交即可——pre-commit 钩子会自动把它同步到 `docs/<demo>/index.html` 并纳入本次提交。
-3. 在上面的 Demos 表格里加一行；在线演示 URL 形如 `https://gmgnai.github.io/skillmarket-demos/<demo>/`。
+1. Create a `<demo>/` subdirectory; put the frontend source at `<demo>/static/index.html`.
+2. Just commit — the pre-commit hook auto-syncs it to `docs/<demo>/index.html` and stages it in the same commit.
+3. Add a row to the Demos table above; the live URL looks like `https://gmgnai.github.io/skillmarket-demos/<demo>/`.
 
-## 启用自动同步钩子（每人 clone 后跑一次 / one-time per clone）
+## Enable the auto-sync hook (one-time per clone)
 
-钩子脚本随仓库分发，但 `git config` 是本地配置、不随 clone 传递，所以 clone 后需启用一次，否则改了 `static/` 而 `docs/` 不更新、Pages 演示会静默停在旧版：
+The hook script ships with the repo, but `git config` is local and does not travel with a clone, so enable it once after cloning — otherwise editing `static/` without updating `docs/` will silently leave the Pages demo on an old version:
 
 ```bash
 git config core.hooksPath scripts/git-hooks
 ```
 
-## GitHub Pages 部署
+## GitHub Pages
 
-Settings → Pages → 选 `main` 分支、目录 `/docs`。各 demo 通过子路径访问（见上表）。
-非 localhost 访客打开演示页时，前端连不上后端会自动进只读 DEMO 模式（示例数据、不可下单）。
+Settings → Pages → select branch `main`, folder `/docs`. Each demo is reachable via its subpath (see the table above).
+When a non-localhost visitor opens a demo page, the frontend can't reach a backend and automatically enters read-only DEMO mode (sample data, no trading).
