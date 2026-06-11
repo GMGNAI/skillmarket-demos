@@ -1,5 +1,9 @@
 <div align="center">
 
+<img src="static/gmgn-api-demos.png" alt="GMGN API Demos" />
+
+[![X](https://img.shields.io/badge/Follow-%40gmgnai-black?logo=x&logoColor=white)](https://x.com/gmgnai) [![Telegram](https://img.shields.io/badge/Telegram-gmgnagentapi-2CA5E0?logo=telegram&logoColor=white)](https://t.me/gmgnagentapi) [![Discord](https://img.shields.io/badge/Discord-gmgnai-5865F2?logo=discord&logoColor=white)](https://discord.gg/gmgnai)
+
 English | [简体中文](README.zh.md)
 
 </div>
