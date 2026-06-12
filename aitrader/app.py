@@ -1037,6 +1037,9 @@ class RunIn(BaseModel):
 class ChainIn(BaseModel):
     chain: str
 
+class ModeIn(BaseModel):
+    mode: str                # "LIVE" | "SHADOW"
+
 def _block_if_public():
     """公开演示为只读：所有写操作（含触发 CLI / 改配置 / 买卖）一律拒绝。"""
     if PUBLIC_DEMO:
@@ -1074,6 +1077,15 @@ def api_config(cfg: ConfigIn):
             pass               # gmgn-cli 未装时退回 Mock，仍可联调
     return dict(ok=True, mode=ST.mode, live_adapter=ST.is_live_adapter,
                 trading_locked=LIVE_TRADING_DISABLED)
+
+@app.post("/api/mode")
+def api_mode(m: ModeIn):
+    """切实盘/模拟盘（右上角图标按钮）。LIVE 仅在未锁时生效；不写 env。"""
+    _block_if_public()
+    want_live = m.mode.upper() == "LIVE"
+    with ST.lock:
+        ST.mode = "LIVE" if (want_live and not LIVE_TRADING_DISABLED) else "SHADOW"
+    return dict(ok=True, mode=ST.mode, trading_locked=LIVE_TRADING_DISABLED)
 
 @app.post("/api/chain")
 def api_chain(c: ChainIn):
