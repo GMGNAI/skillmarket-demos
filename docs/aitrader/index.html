@@ -72,6 +72,8 @@ body.publicro #escCard{display:none !important}
 .gear:hover{border-color:var(--lime);color:var(--lime)}.gear svg{width:16px;height:16px}
 .langbtn{height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:var(--ink2);color:var(--paper2);display:grid;place-items:center;cursor:pointer;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.04em;white-space:nowrap}
 .langbtn:hover{border-color:var(--lime);color:var(--lime)}
+.pill.mode.clk{cursor:pointer;transition:border-color .15s}
+.pill.mode.clk:hover{border-color:var(--lime)}
 
 /* KPI */
 .kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:11px;flex-shrink:0}
@@ -233,6 +235,9 @@ td{padding:5px 10px;vertical-align:middle}
 .modal h2{font-family:var(--disp);font-weight:800;font-size:17px;padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px}
 .modal h2 svg{width:16px;height:16px;color:var(--lime)}
 .modal h2 .x{margin-left:auto;cursor:pointer;color:var(--dim);font-size:22px;line-height:1}.modal h2 .x:hover{color:var(--paper)}
+.modal h2 .hreset{margin-left:auto;cursor:pointer;color:var(--dim);font-size:12px;font-weight:700;border:1px solid var(--line);border-radius:7px;padding:3px 9px;transition:.15s;letter-spacing:.3px}
+.modal h2 .hreset:hover{border-color:var(--amber);color:var(--amber)}
+.modal h2 .hreset+.x{margin-left:10px}
 .mbody{padding:18px 20px;display:flex;flex-direction:column;gap:15px}
 .fld label{display:block;font-size:10px;letter-spacing:.12em;color:var(--dim);margin-bottom:6px}
 .fld input,.fld textarea,.fld select{width:100%;background:var(--ink);border:1px solid var(--line);color:var(--paper);border-radius:9px;padding:10px 12px;font-family:var(--mono);font-size:12px}
@@ -287,7 +292,7 @@ td{padding:5px 10px;vertical-align:middle}
         </div>
       </div>
       <div class="pill"><div><span class="k">P50 LAT</span><span class="v" id="lat">182ms</span></div></div>
-      <div class="pill mode" id="modePillWrap" style="cursor:help" data-i18n-tip="mode_tip"><span class="dot" style="background:var(--amber)"></span><div><span class="k">MODE</span><span class="v" id="modePill">模拟盘</span></div></div>
+      <div class="pill mode clk" id="modePillWrap" onclick="toggleMode()" data-i18n-title="mode_toggle_title"><span class="dot" id="modeDot" style="background:var(--amber)"></span><div><span class="k">MODE</span><span class="v" id="modePill">模拟盘</span></div></div>
       <div class="seg2"><button id="srcDemo" class="on" onclick="setSource('demo')">DEMO</button><button id="srcBe" onclick="setSource('backend')" data-i18n="src_backend">本地后端</button></div>
       <div class="langbtn" id="langBtn" data-i18n-title="lang_title" onclick="switchLang()">中文</div>
       <div class="gear" id="gearBtn" data-i18n-title="gear_title"></div>
@@ -337,7 +342,7 @@ td{padding:5px 10px;vertical-align:middle}
     <div class="mbody">
       <div class="fld"><label>GMGN API KEY</label><input id="apiKey" type="password" data-i18n-ph="cfg_apikey_ph" autocomplete="off"><div class="hint" data-i18n="cfg_apikey_hint">用于认证 OpenAPI 请求。已配过就无需重填——刷新页面会自动用环境 key 连接。</div></div>
       <div class="fld"><label data-i18n="cfg_signkey_label">GMGN SIGNING KEY · 请求签名密钥</label><textarea id="signKey" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" autocomplete="off"></textarea><div class="hint" data-i18n="cfg_signkey_hint">Ed25519 签名密钥，非钱包私钥；仅发往本地后端</div></div>
-      <div class="fld"><label data-i18n="cfg_mode_label">成交模式</label><div style="margin-top:7px"><label class="tg"><input id="liveTg" type="checkbox" onchange="onLive(this)"><span class="tr"><span class="kn"></span></span><span id="liveLbl">SHADOW · 一键买入只记录</span></label></div><div class="hint" data-i18n="cfg_mode_hint">链在右上角 CHAIN 切换（存浏览器，不写文件）</div></div>
+      <div class="fld"><label data-i18n="cfg_mode_label">成交模式</label><div class="hint" data-i18n="cfg_mode_hint" style="margin-top:7px">在右上角 MODE 图标点击切换 实盘/模拟盘；链在 CHAIN 切换（存浏览器，不写文件）</div></div>
       <div class="mwarn" data-i18n="cfg_mwarn">⚠ 两个 key 只发送到你本机后端 (127.0.0.1)，不离开本机、不写浏览器存储。SHADOW 下「一键买入/平仓」只落日志不真实发单；切 LIVE 才会经签名密钥真实成交。</div>
     </div>
     <div class="mfoot"><button class="mbtn" id="saveBtn" onclick="saveCfg()" data-i18n="cfg_save">保存到本地后端</button><button class="mbtn ghost" onclick="closeCfg()" data-i18n="btn_close">关闭</button><span class="savestate" id="saveState"></span></div>
@@ -346,7 +351,7 @@ td{padding:5px 10px;vertical-align:middle}
 
 <div class="scrim" id="pipeScrim">
   <div class="modal">
-    <h2><span id="ic-pipecog"></span><span data-i18n="pipe_h2">筛选设置 · 热榜命令 / 轮询</span><span class="x" onclick="closePipe()">×</span></h2>
+    <h2><span id="ic-pipecog"></span><span data-i18n="pipe_h2">筛选设置 · 热榜命令 / 轮询</span><span class="hreset" onclick="resetSettings()" data-i18n="pipe_reset_btn" data-i18n-title="pipe_reset_btn_title">↺ 重置</span><span class="x" onclick="closePipe()">×</span></h2>
     <div class="mbody">
       <div class="fld"><label data-i18n="pipe_cmd_label">GMGN-CLI 热榜命令</label><textarea id="trendCmd" rows="3" placeholder="gmgn-cli market trending ..." autocomplete="off" spellcheck="false"></textarea><div class="hint" data-i18n="pipe_cmd_hint">每轮扫描执行的完整命令；须以 <code>gmgn-cli market trending</code> 开头，自动补 <code>--raw</code>。改 --limit / --interval / --order-by / --filter / --chain 即可。</div></div>
       <div class="fld"><label data-i18n="pipe_poll_label">轮询间隔（秒）</label><div class="szrow"><input id="pollSec" type="number" step="0.5" min="1"><span class="unit">s</span></div><div class="hint" data-i18n="pipe_poll_hint">前端每隔多久打一次 /api/run。建议 ≥30s 省配额；先感受可短些。</div></div>
@@ -425,6 +430,8 @@ const I18N={
     pipe_poll_hint:'前端每隔多久打一次 /api/run。建议 ≥30s 省配额；先感受可短些。',
     pipe_mwarn:'⚠ 命令在你本机后端执行（127.0.0.1），仅限热榜命令。保存后立即生效：命令下一轮起用，间隔即时重设。',
     pipe_save:'保存并立即生效', pipe_reset:'恢复默认命令',
+    pipe_reset_btn:'↺ 重置', pipe_reset_btn_title:'重置本链热榜命令为默认（服务端持久）',
+    toast_reset_done:'筛选条件已恢复默认', toast_reset_fail:(m)=>`重置失败：${m}`,
     buy_h2:'一键买入 · ',
     buy_size_label:'买入数量（代码按固定分数法算好，可调）',
     buy_size_hint:'仓位 = 冒险额 / 止损距离。LLM 不参与定数字。',
@@ -509,6 +516,7 @@ const I18N={
     toast_poll_min:'轮询间隔至少 1 秒', saving:'保存中…',
     pipe_applied:(s)=>`✓ 已生效（间隔 ${s}s）`, toast_pipe_saved:'筛选设置已保存并生效', toast_pipe_fail:(m)=>`保存失败：${m}`,
     live_lbl_live:'LIVE · 一键即真实成交！', live_lbl_shadow:'SHADOW · 一键买入只记录', mode_live:'实盘', mode_shadow:'模拟盘',
+    mode_toggle_title:'点击切换 实盘/模拟盘', toast_mode_live:'已切到实盘 · 买卖将真实成交、动用资金', toast_mode_shadow:'已切到模拟盘 · 买卖只记录、不上链', toast_mode_fail:(m)=>`切换失败：${m}`,
     confirm_live_title:'切到 LIVE 模式',
     confirm_live_msg:'之后「一键买入 / 平仓」会经签名密钥<b>真实成交、动用资金</b>。<br>确定开启吗？',
     toast_need_key:'请先填 API Key', cfg_saved:'✓ 已写入 ~/.config/gmgn/.env', toast_cfg_fail:(m)=>`保存失败：后端未启动？(${m})`,
@@ -516,9 +524,12 @@ const I18N={
     buy_riskwarn:'⚠ 组合风控：买入后将达到并发/敞口上限。建议先平掉一个持仓再买，或调小数量。',
     buy_mode_live:'当前 LIVE 模式：确认后将经签名密钥真实下单。', buy_mode_shadow:'当前 SHADOW 模式：确认后只记录意图、不真实发单。',
     toast_buy:(live,sym,size)=>`${live?'已真实下单 ':'已记录(SHADOW) '}${sym} ${size} SOL`,
+    toast_buy_v2:(kind,sym,size,st)=>kind==='sh'?`已记录(SHADOW，未上链) ${sym} ${size}`:kind==='live'?`✓ 已成交 ${sym} ${size} · ${st}`:`已提交·待确认（尚未成交）${sym} ${size} · ${st}`,
+    toast_mode_reverted:'后端已回到 SHADOW（可能重启过）：买卖只记录、不上链。要真实交易请重新切 LIVE。',
     toast_buy_demo:(live,sym,size)=>`${live?'已真实下单 ':'已记录(SHADOW) '}${sym} ${size} SOL · 已加入逃生监控`,
     buy_log_reason:(live,size,exit)=>`${live?'LIVE 真实成交 ':'SHADOW 记录 '}${size} SOL · ${exit}`,
     toast_buy_fail:(m)=>`下单失败：${m}`, buy_ordering:'下单中…',
+    toast_trade_locked:'链上交易已锁（LIVE_TRADING_DISABLED），无法切到 LIVE。后端始终走 SHADOW。',
     sell_title:(sym)=>`平仓 ${sym}`,
     sell_msg:(sym,size,esc)=>`平仓 <b>${sym}</b>（${size} SOL）？`+(esc?'<br><span style="color:var(--clay)">⚠ 已触发逃生信号，建议立即平仓。</span>':'')+'<br><span style="color:var(--dim2);font-size:11.5px">SHADOW 模式下仅记录、不真实发单。</span>',
     toast_sell_sent:(sym)=>`已发送平仓 ${sym}`, toast_sell_fail:(m)=>`平仓失败：${m}`,
@@ -567,6 +578,8 @@ const I18N={
     pipe_poll_hint:'How often the frontend calls /api/run. ≥30s recommended to save quota; shorter for first feel.',
     pipe_mwarn:'⚠ The command runs on your local backend (127.0.0.1), trending commands only. Takes effect on save: command from the next round, interval reset instantly.',
     pipe_save:'Save & apply now', pipe_reset:'Restore default command',
+    pipe_reset_btn:'↺ Reset', pipe_reset_btn_title:'Reset this chain’s trending command to default (persisted server-side)',
+    toast_reset_done:'Filters restored to default', toast_reset_fail:(m)=>`Reset failed: ${m}`,
     buy_h2:'One-Click Buy · ',
     buy_size_label:'Buy amount (computed by fixed-fraction; adjustable)',
     buy_size_hint:'Size = risk amount / stop distance. The LLM never sets the number.',
@@ -651,6 +664,7 @@ const I18N={
     toast_poll_min:'Poll interval must be ≥ 1s', saving:'Saving…',
     pipe_applied:(s)=>`✓ Applied (interval ${s}s)`, toast_pipe_saved:'Screening settings saved and applied', toast_pipe_fail:(m)=>`Save failed: ${m}`,
     live_lbl_live:'LIVE · one click = real trade!', live_lbl_shadow:'SHADOW · one-click buy records only', mode_live:'LIVE', mode_shadow:'SHADOW',
+    mode_toggle_title:'Click to toggle Live / Shadow', toast_mode_live:'Switched to LIVE · trades settle for real, real funds', toast_mode_shadow:'Switched to SHADOW · trades only logged, no on-chain', toast_mode_fail:(m)=>`Switch failed: ${m}`,
     confirm_live_title:'Switch to LIVE mode',
     confirm_live_msg:'After this, one-click buy/sell settles for <b>real via the signing key, using real funds</b>.<br>Enable it?',
     toast_need_key:'Enter your API Key first', cfg_saved:'✓ Written to ~/.config/gmgn/.env', toast_cfg_fail:(m)=>`Save failed: backend not running? (${m})`,
@@ -658,9 +672,12 @@ const I18N={
     buy_riskwarn:'⚠ Portfolio risk: buying will hit the concurrency/exposure cap. Close a position first or reduce the size.',
     buy_mode_live:'LIVE mode: confirm to place a real order via the signing key.', buy_mode_shadow:'SHADOW mode: confirm to record intent only, no real order.',
     toast_buy:(live,sym,size)=>`${live?'Order placed ':'Recorded (SHADOW) '}${sym} ${size} SOL`,
+    toast_buy_v2:(kind,sym,size,st)=>kind==='sh'?`Recorded (SHADOW, not on-chain) ${sym} ${size}`:kind==='live'?`✓ Filled ${sym} ${size} · ${st}`:`Submitted · pending (not yet filled) ${sym} ${size} · ${st}`,
+    toast_mode_reverted:'Backend is back to SHADOW (likely restarted): buy/sell only logs, no on-chain. Switch to LIVE again for real trades.',
     toast_buy_demo:(live,sym,size)=>`${live?'Order placed ':'Recorded (SHADOW) '}${sym} ${size} SOL · added to escape monitor`,
     buy_log_reason:(live,size,exit)=>`${live?'LIVE filled ':'SHADOW logged '}${size} SOL · ${exit}`,
     toast_buy_fail:(m)=>`Order failed: ${m}`, buy_ordering:'Placing order…',
+    toast_trade_locked:'On-chain trading is locked (LIVE_TRADING_DISABLED); cannot switch to LIVE. The backend always runs SHADOW.',
     sell_title:(sym)=>`Close ${sym}`,
     sell_msg:(sym,size,esc)=>`Close <b>${sym}</b> (${size} SOL)?`+(esc?'<br><span style="color:var(--clay)">⚠ Escape signal triggered, close now.</span>':'')+'<br><span style="color:var(--dim2);font-size:11.5px">In SHADOW, records only, no real order.</span>',
     toast_sell_sent:(sym)=>`Sell sent ${sym}`, toast_sell_fail:(m)=>`Close failed: ${m}`,
@@ -709,7 +726,7 @@ const fill=n=>`<svg viewBox="0 0 24 24" fill="currentColor" stroke="none">${I[n]
 /* 同源请求：后端(127.0.0.1:8000)托管本页时走相对路径，经隧道访问也回到本机后端；
    仅 file:// 直接打开时回退到本地端口。连不上(纯静态/GitHub Pages)→ 自动 DEMO。 */
 const API=location.protocol==='file:'?"http://127.0.0.1:8000":"";
-let source="demo", bePolling=false, liveMode=false;
+let source="demo", bePolling=false, liveMode=false, tradingLocked=false;
 let pollMs=5600, pollTimer=null, defaultTrendCmd="", curChain="sol", beReady=false, buyAmount=0.01;
 let onlyHeld=false;            // TOKEN 旁警告图标：只看当前持仓的币
 function toggleOnlyHeld(){
@@ -738,23 +755,20 @@ function updateAmtUnit(){const u=document.getElementById('amtUnit');if(u)u.textC
 function toggleChainMenu(){const m=document.getElementById('chainMenu');m.classList.toggle('on');
   [...m.children].forEach(d=>d.classList.toggle('sel',d.dataset.ch===curChain));}
 function closeChainMenu(){document.getElementById('chainMenu').classList.remove('on');}
-async function switchChain(ch){
+function switchChain(ch){
   closeChainMenu();
   if(ch===curChain)return;
-  try{
-    if(source==='backend'){
-      const r=await fetch(API+'/api/chain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:ch})});
-      if(!r.ok)throw new Error('HTTP '+r.status);
-    }
-    curChain=ch;
-    localStorage.setItem('aitrader_chain',ch);
-    document.getElementById('chainPill').textContent=CHAIN_LABEL[ch];
-    buyAmount=loadBuyAmt(ch);
-    const ai=document.getElementById('amtInput');if(ai)ai.value=buyAmount;
-    updateAmtUnit();
-    toast(t('toast_chain_switched',CHAIN_LABEL[ch]),'ok');
-    if(source==='backend'&&bePolling)scanCycle(); else renderAll(true);
-  }catch(e){toast(t('toast_chain_fail',e.message),'err');}
+  // 链随请求传递：切链只改本 tab 状态 + 重扫，无需通知后端（无全局链了）
+  curChain=ch;
+  sessionStorage.setItem('aitrader_chain',ch);   // 本 tab 的链（多 tab 互不干扰）
+  localStorage.setItem('aitrader_chain',ch);     // 顺便更新「新 tab 默认链」
+  document.getElementById('chainPill').textContent=CHAIN_LABEL[ch];
+  buyAmount=loadBuyAmt(ch);
+  const ai=document.getElementById('amtInput');if(ai)ai.value=buyAmount;
+  updateAmtUnit();
+  loadingScreen=true;                            // 切链先回骨架，别拿旧链数据糊脸
+  toast(t('toast_chain_switched',CHAIN_LABEL[ch]),'ok');
+  if(source==='backend'&&bePolling)scanCycle(); else renderAll(true);
 }
 /* CA 缩写：前 5 … 后 4；GMGN 代币页链接 */
 const shortCA=a=>a?(a.length>11?a.slice(0,5)+'…'+a.slice(-4):a):'';
@@ -1074,13 +1088,16 @@ async function scanCycle(){
   const sc=document.getElementById('scanning');
   if(source==='backend'){
     if(!bePolling||scanInFlight)return;       // 防重入：上一次没回来就跳过本轮，避免请求堆积雪崩
+    if(document.hidden)return;                 // 后台 tab 暂停轮询，不烧配额（重新可见时立即补一轮）
     scanInFlight=true;
     sc.classList.add('on');const t0=performance.now();
     try{
-      const r=await fetch(API+'/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const reqChain=curChain;                   // 记下本次请求的链，返回后比对，切走了就丢弃
+      const r=await fetch(API+'/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:reqChain})});
       if(!r.ok)throw new Error('HTTP '+r.status);
       const data=await r.json();
-      if(source!=='backend')return;        // 在途请求返回前用户已切走（如切 DEMO）→ 丢弃，不覆盖
+      if(source!=='backend'||reqChain!==curChain)return;   // 期间切走源/切了链 → 丢弃，不拿旧链数据覆盖
+      syncBackendMode(data.mode);            // 后端真实 mode 同步到开关（重启后端会回 SHADOW，避免开关停留 LIVE 误导）
       const {list,risk,positions}=normalize(data);
       loadingScreen=false;                 // 拿到后端响应，结束骨架
       T=list; RISK=risk; if(positions)POS=positions; if(sel>=T.length)sel=-1;
@@ -1128,7 +1145,7 @@ async function openPipe(){
   const cmdEl=document.getElementById('trendCmd');
   cmdEl.value=t('pipe_loading');document.getElementById('pipeState').textContent='';
   try{
-    const r=await fetch(API+'/api/settings');
+    const r=await fetch(API+'/api/settings?chain='+encodeURIComponent(curChain));
     const d=await r.json();
     defaultTrendCmd=d.default_trending_cmd||'';
     cmdEl.value=d.trending_cmd||defaultTrendCmd;
@@ -1137,6 +1154,18 @@ async function openPipe(){
 }
 function closePipe(){document.getElementById('pipeScrim').classList.remove('on');}
 function resetPipeCmd(){if(defaultTrendCmd)document.getElementById('trendCmd').value=defaultTrendCmd;}
+// 右上角「重置」：调服务端把本链热榜命令删回默认（持久），成功后顶部提示 + 刷新编辑框
+async function resetSettings(){
+  if(source!=='backend'){if(defaultTrendCmd)document.getElementById('trendCmd').value=defaultTrendCmd;toast(t('toast_reset_done'),'ok');return;}
+  try{
+    const r=await fetch(API+'/api/settings/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:curChain})});
+    if(!r.ok)throw new Error(await errDetail(r));
+    const d=await r.json();
+    document.getElementById('trendCmd').value=d.trending_cmd||defaultTrendCmd;
+    toast(t('toast_reset_done'),'ok');
+    if(bePolling)scanCycle();
+  }catch(e){toast(t('toast_reset_fail',e.message),'err');}
+}
 dismissOnBackdrop('pipeScrim',closePipe);
 
 /* ── 通用二次确认弹窗（替代浏览器 confirm）── */
@@ -1162,7 +1191,7 @@ async function savePipe(){
   const cmd=document.getElementById('trendCmd').value.trim();
   ss.innerHTML='<span class="spin"></span>'+t('saving');
   try{
-    const r=await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trending_cmd:cmd})});
+    const r=await fetch(API+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trending_cmd:cmd,chain:curChain})});
     if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.detail||('HTTP '+r.status));}
     applyPollInterval(sec);
     ss.textContent=t('pipe_applied',pollMs/1000);
@@ -1170,20 +1199,46 @@ async function savePipe(){
     if(source==='backend'&&bePolling)scanCycle();
   }catch(e){ss.textContent='';toast(t('toast_pipe_fail',e.message),'err');}
 }
-function applyLiveLabel(){
-  document.getElementById('liveLbl').textContent=liveMode?t('live_lbl_live'):t('live_lbl_shadow');
-  const v=document.getElementById('modePill');v.textContent=liveMode?t('mode_live'):t('mode_shadow');v.style.color=liveMode?'var(--clay)':'var(--amber)';
+// 后端真实 mode → 同步前端 LIVE/SHADOW 开关。后端重启会回 SHADOW；若开关停在 LIVE，
+// 此处翻回 SHADOW 并弹一次警示，杜绝「以为 LIVE、实际 SHADOW 只记录」的误买。
+function syncBackendMode(m){
+  if(typeof m!=='string')return;
+  const beLive=(m==='LIVE');
+  if(beLive===liveMode)return;
+  const wasLive=liveMode;
+  liveMode=beLive;
+  applyLiveLabel();
+  if(wasLive&&!beLive)toast(t('toast_mode_reverted'),'err');   // LIVE→SHADOW 自动回落，提醒用户
 }
-function onLive(cb){
-  if(cb.checked){
-    cb.checked=false;                          // 先回退，确认后再开
-    confirmDialog(t('confirm_live_title'),t('confirm_live_msg'),
-      ()=>{document.getElementById('liveTg').checked=true;liveMode=true;applyLiveLabel();});
+function applyLiveLabel(){
+  const ll=document.getElementById('liveLbl'); if(ll)ll.textContent=liveMode?t('live_lbl_live'):t('live_lbl_shadow');
+  const v=document.getElementById('modePill');v.textContent=liveMode?t('mode_live'):t('mode_shadow');v.style.color=liveMode?'var(--clay)':'var(--amber)';
+  const dot=document.getElementById('modeDot'); if(dot)dot.style.background=liveMode?'var(--clay)':'var(--amber)';
+}
+// 右上角 MODE 图标点击切换：→LIVE 需二次确认(动真钱)，→SHADOW 直接切。均通知后端 /api/mode。
+function toggleMode(){
+  const goLive=!liveMode;
+  if(goLive&&tradingLocked){toast(t('toast_trade_locked'),'err');return;}   // 硬锁时不让切 LIVE
+  if(source!=='backend'){                       // DEMO 无后端：仅本地翻转
+    if(goLive){confirmDialog(t('confirm_live_title'),t('confirm_live_msg'),()=>{liveMode=true;applyLiveLabel();});}
+    else{liveMode=false;applyLiveLabel();}
     return;
   }
-  liveMode=false;applyLiveLabel();
+  const apply=async(target)=>{
+    try{
+      const r=await fetch(API+'/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:target?'LIVE':'SHADOW'})});
+      if(!r.ok)throw new Error(await errDetail(r));
+      const d=await r.json();
+      liveMode=(d.mode==='LIVE');applyLiveLabel();
+      toast(liveMode?t('toast_mode_live'):t('toast_mode_shadow'),liveMode?'err':'ok');
+    }catch(e){toast(t('toast_mode_fail',e.message),'err');}
+  };
+  if(goLive)confirmDialog(t('confirm_live_title'),t('confirm_live_msg'),()=>apply(true));
+  else apply(false);
 }
 const val=id=>document.getElementById(id).value.trim();
+// 从后端错误响应取 FastAPI 的 detail（如「链上买入失败：缺签名密钥」），取不到才回 HTTP 码
+async function errDetail(resp){const j=await resp.json().catch(()=>({}));return j.detail||('HTTP '+resp.status);}
 async function saveCfg(){
   const body={api_key:val('apiKey'),signing_key:val('signKey'),chain:curChain,mode:liveMode?'LIVE':'SHADOW'};
   if(!body.api_key&&!beReady){toast(t('toast_need_key'),'err');return;}  // 后端已有环境 key 则可留空
@@ -1220,9 +1275,14 @@ async function doBuy(){
   if(source==='backend'){
     const bs=document.getElementById('buyState');bs.innerHTML='<span class="spin"></span>'+t('buy_ordering');
     try{
-      const resp=await fetch(API+'/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:r.address||r.addr,size_sol:size})});
-      if(!resp.ok)throw new Error('HTTP '+resp.status);
-      toast(t('toast_buy',liveMode,r.sym,size),'ok');closeBuy();scanCycle();
+      const resp=await fetch(API+'/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:r.address||r.addr,size_sol:size,chain:curChain})});
+      if(!resp.ok)throw new Error(await errDetail(resp));   // 带后端原因(如缺签名密钥/风控硬拦)
+      const j=await resp.json();
+      // 文案严格按后端返回：SHADOW=只记录；LIVE 已成交=filled；LIVE 待确认=pending（都不谎报）
+      const sym=j.symbol||r.sym, st=String(j.status||'');
+      const kind=st.includes('SHADOW')?'sh':(j.filled?'live':'pending');
+      toast(t('toast_buy_v2',kind,sym,size,st),kind==='pending'?'err':'ok');
+      closeBuy();scanCycle();
     }catch(e){bs.textContent='';toast(t('toast_buy_fail',e.message),'err');}
     return;
   }
@@ -1244,7 +1304,7 @@ function doSellPos(i){
   const p=POS[i];if(!p)return;
   if(source==='backend'){
     fetch(API+'/api/sell',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({address:p.address||p.addr})})
-      .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);toast(t('toast_sell_sent',p.sym),'ok');scanCycle();})
+      .then(async r=>{if(!r.ok)throw new Error(await errDetail(r));toast(t('toast_sell_sent',p.sym),'ok');scanCycle();})
       .catch(e=>toast(t('toast_sell_fail',e.message),'err'));
     return;
   }
@@ -1331,11 +1391,14 @@ applyI18n();tick();
 setInterval(tick,1000);
 pollTimer=setInterval(scanCycle,pollMs);
 setInterval(telemetry,2600);
+// tab 重新可见时立即补一轮（轮询在隐藏时已自动暂停，见 scanCycle）
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&source==='backend'&&bePolling)scanCycle();});
 
 /* 页面加载即探测后端：环境已有 key 就自动连真实数据，免去每次重填 */
 async function autoConnect(){
-  // 链状态以浏览器缓存为准（不写 env）
-  const savedChain=localStorage.getItem('aitrader_chain')||'sol';
+  // 链是「每个 tab 独立」的视图偏好：本 tab 用 sessionStorage（互不干扰），
+  // localStorage 只作「新 tab 的默认链」种子。
+  const savedChain=sessionStorage.getItem('aitrader_chain')||localStorage.getItem('aitrader_chain')||'sol';
   curChain=savedChain;
   document.getElementById('chainPill').textContent=CHAIN_LABEL[curChain]||'SOL';
   buyAmount=loadBuyAmt(curChain);
@@ -1343,7 +1406,7 @@ async function autoConnect(){
   updateAmtUnit();
   try{
     const r=await fetch(API+'/api/status'); if(!r.ok)throw 0;
-    const d=await r.json(); beReady=!!d.has_key;
+    const d=await r.json(); beReady=!!d.has_key; tradingLocked=!!d.trading_locked;
     if(d.public_demo){
       // 公开只读演示：后端定时广播真实筛选缓存。锁定 UI 为只读，链跟随后端。
       document.body.classList.add('publicro');
@@ -1353,10 +1416,7 @@ async function autoConnect(){
       return;
     }
     if(d.has_key){
-      // 把后端链同步到浏览器保存的链
-      if(d.chain!==curChain){
-        try{await fetch(API+'/api/chain',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chain:curChain})});}catch(e){}
-      }
+      // 链随各请求传递，无需再同步后端全局态（已无全局链）
       setSource('backend');                 // 有后端+key → 直接轮询真实数据（scanCycle 会结束骨架）
       toast(t('toast_connected',CHAIN_LABEL[curChain]),'ok');
       return;
