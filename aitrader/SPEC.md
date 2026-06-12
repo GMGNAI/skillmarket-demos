@@ -105,7 +105,7 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
 | `swap` | 执行(LIVE) | 市价下单——**已解锁**：买入 `--input-token`=本链原生币、`--amount`=最小单位；卖出 `--input-token`=持仓币、`--percent 100` 全清 | LIVE 模式买/卖时 |
 | `order get` | 执行(LIVE) | 轮询订单状态（取 status/hash） | LIVE 买入后 |
 
-热榜命令**按链有默认**（`DEFAULT_TRENDING_CMDS`），sol 默认带 pump 平台：
+热榜命令**按链有默认**（`DEFAULT_TRENDING_CMDS`）：sol 默认带 pump 平台；bsc 默认带 fourmeme 系平台（fourmeme/fourmeme_agent/bn_fourmeme/cubepeg/likwid/goplus_creator/goplus_skills/openfour/flap/flap_stocks）；base/eth 走通用模板（无 `--platform`）。`--platform` 按链不同（pump 系仅 sol、fourmeme 系仅 bsc）。sol 示例：
 ```
 gmgn-cli market trending --chain sol --platform Pump.fun --platform pump_mayhem --platform pump_mayhem_agent --platform pump_agent --interval 1h --order-by volume --limit 100 --raw
 ```

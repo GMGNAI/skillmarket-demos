@@ -124,6 +124,11 @@ DEFAULT_TRENDING_CMDS = {
     "sol": ("gmgn-cli market trending --chain sol "
             "--platform Pump.fun --platform pump_mayhem --platform pump_mayhem_agent --platform pump_agent "
             "--interval 1h --order-by volume --limit 100 --raw"),
+    "bsc": ("gmgn-cli market trending --chain bsc "
+            "--platform fourmeme --platform fourmeme_agent --platform bn_fourmeme "
+            "--platform cubepeg --platform likwid --platform goplus_creator --platform goplus_skills "
+            "--platform openfour --platform flap --platform flap_stocks "
+            "--interval 1h --order-by volume --limit 100 --raw"),
 }
 def default_trending_cmd(chain: str = "sol") -> str:
     cmd = DEFAULT_TRENDING_CMDS.get(chain)
