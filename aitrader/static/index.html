@@ -497,7 +497,7 @@ const I18N={
     age_title:'创建至今', age_title_fresh:'创建至今 · 1h 内新币',
     empty_onlyheld:'当前无持仓的币在筛选结果中',
     empty_none:'暂无候选 · 切到「本地后端」或调整热榜命令',
-    detail_passed:(pri,size,warn)=>`通过全部闸门 · 优先级 ${pri} · 仓位由代码算 ${size} SOL${warn?' · ⚠ 买入将触及风控上限':''}`,
+    detail_riskwarn:'⚠ 买入将触及风控上限（仅提示，不阻断）',
     detail_exit:(exit)=>`退出预案：${exit}`,
     detail_died_lab:(gate)=>`阵亡于「${gate}」门`,
     detail_filtered:'已过滤',
@@ -657,7 +657,7 @@ const I18N={
     age_title:'Age since creation', age_title_fresh:'Age since creation · new within 1h',
     empty_onlyheld:'No held tokens are in the current results',
     empty_none:'No candidates · switch to “Local backend” or adjust the trending command',
-    detail_passed:(pri,size,warn)=>`Passed all gates · priority ${pri} · size computed ${size} SOL${warn?' · ⚠ buy will hit the risk cap':''}`,
+    detail_riskwarn:'⚠ buy will hit the risk cap (warning only, not blocking)',
     detail_exit:(exit)=>`Exit plan: ${exit}`,
     detail_died_lab:(gate)=>`Eliminated at the “${gate}” gate`,
     detail_filtered:'Filtered out',
@@ -1059,8 +1059,8 @@ function renderDetail(){
   const r=(sel>=0?T[sel]:null); if(!r){document.getElementById('detail').innerHTML='';return;}
   let right;
   if(r.status==='action'){
-    right=`<div class="lab">${t('detail_passed',r.pri,r.size,r.warn)}</div>
-      <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
+    const warnNote=r.warn?`<div class="lab" style="color:var(--amber);letter-spacing:0;margin-bottom:5px">${t('detail_riskwarn')}</div>`:'';
+    right=`${warnNote}<span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
   }else{
     right=`<div class="lab">${t('detail_died_lab',gateName(r.died))}</div><span class="clay">${reasonOf(r)}</span>`;
   }
