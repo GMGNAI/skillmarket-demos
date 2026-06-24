@@ -147,6 +147,7 @@ td{padding:5px 10px;vertical-align:middle}
 .devcard .dck{color:var(--dim2);font-size:9px;letter-spacing:.05em}
 .devcard .dcv{font-size:12px;font-weight:600}.devcard .dcv.good{color:var(--lime)}.devcard .dcv.bad{color:var(--clay)}
 .devcard .dcinner{color:var(--clay);font-size:9px;font-weight:500;cursor:help}
+.devcard .dcrisk{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);color:var(--clay);font-size:10px;font-weight:600}
 .gates{display:flex;gap:4px}
 .pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
 .pip svg{width:11px;height:11px}
@@ -475,13 +476,14 @@ const I18N={
     dev_good:'优质', dev_mid:'中性', dev_weak:'弱',
     reskin_tag:'换皮', reskin_tip:'换皮重发：该 dev 复用同一张图连环发新币（同套路反复重发，诈骗惯用）。不采信推特改名（项目方随填、非 dev 身份）',
     dev_rep_label:'Dev 信誉分', dev_trust:'可信 ✓', dev_distrust:'不可信 ⛔',
-    dev_k_open:'开外盘', dev_k_inner:'内盘沉底', dev_k_rate:'开外盘率', dev_k_reskin:'换皮重发',
+    dev_k_launches:'历史发币', dev_k_rug:'rug 次数', dev_k_alive:'存活', dev_k_inner:'内盘沉底', dev_k_reskin:'换皮重发',
     dev_reskin_yes:'检出 ⚠', dev_reskin_no:'未检出 ✓',
+    dev_sec_warn:(unsafe,checked,risks)=>`⚠ 近 ${checked} 个发币里 ${unsafe} 个不安全：${risks}`,
     dev_inner_tip:'一直卡在内盘(bonding curve)、从未打满开外盘的币数；海量内盘沉底 = 批量发币工厂号',
     rs_dev_factory:'Dev 信誉低（评分 6/100：内盘沉底 600 · 开外盘率 2%）—— 批量发币工厂号',
     rs_dev_reskin:'Dev 信誉低（评分 0/100：内盘沉底 2000 · 开外盘率 1% · 换皮重发）',
     devhist_none:'DEV 历史评估　|　未评估（仅对排序靠前的少数幸存者查 dev 历史；本币止步前关或不在评估池）',
-    devhist_tip:(score,open,ath,exited,reskin,surv)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　开外盘 ${open} 个　·　开外盘率 ${surv}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史。主分=开外盘率(毕业率)；内盘沉底多/换皮/已清仓减分。点该行看右下角 Dev 信誉卡`,
+    devhist_tip:(score,open,ath,exited,reskin,rug)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　历史发币 ${open} 个　·　rug率 ${rug}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史 + 逐币安全扫描(token security)。主分=存活率；内盘沉底/发不安全币/换皮/已清仓减分。点该行看右下角 Dev 信誉卡`,
     vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
     rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
     rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
@@ -634,13 +636,14 @@ const I18N={
     dev_good:'GOOD', dev_mid:'OK', dev_weak:'WEAK',
     reskin_tag:'RESKIN', reskin_tip:'Reskin re-launch: this dev reuses the same image across many new tokens (relaunching the same playbook — a serial-scam pattern). Twitter renames are NOT used (the handle is freely set by the project, not a verified dev identity)',
     dev_rep_label:'Dev reputation', dev_trust:'trusted ✓', dev_distrust:'untrusted ⛔',
-    dev_k_open:'graduated', dev_k_inner:'stuck inner', dev_k_rate:'grad rate', dev_k_reskin:'reskin',
+    dev_k_launches:'launched', dev_k_rug:'rugged', dev_k_alive:'alive', dev_k_inner:'stuck inner', dev_k_reskin:'reskin',
     dev_reskin_yes:'detected ⚠', dev_reskin_no:'none ✓',
+    dev_sec_warn:(unsafe,checked,risks)=>`⚠ ${unsafe}/${checked} recent launches unsafe: ${risks}`,
     dev_inner_tip:'tokens stuck in the bonding curve (inner pool) that never filled to graduate to an outer pool; mass inner-pool dust = token factory',
     rs_dev_factory:'Low dev reputation (6/100: 600 stuck inner · 2% graduation) — token factory',
     rs_dev_reskin:'Low dev reputation (0/100: 2000 stuck inner · 1% graduation · reskin)',
     devhist_none:'Dev reputation　|　not evaluated (dev history is queried only for the top few survivors; this token was cut earlier or is outside the eval pool)',
-    devhist_tip:(score,open,ath,exited,reskin,surv)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} graduated　·　graduation ${surv}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history). Main score = graduation rate; many stuck-in-inner-pool / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
+    devhist_tip:(score,open,ath,exited,reskin,rug)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} launched　·　rug ${rug}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history) + per-token security scan (token security). Main score = survival rate; stuck-inner / unsafe launches / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
     vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
     rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
     rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
@@ -819,7 +822,7 @@ function devCell(t){
   const lbl=s>=0.7?t2('dev_good'):s>=0.45?t2('dev_mid'):t2('dev_weak');
   const cls=s>=0.7?'good':s<0.45?'bad':'';
   const reskin=t.devReskin?`<span class="reskin" data-tip="${t2('reskin_tip')}">${t2('reskin_tag')}</span>`:'';
-  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devLaunches??'?',fmtMc(t.devAth),t.devExited,t.devReskin,t.devSurv==null?'?':Math.round(t.devSurv*100))}">${lbl} ${sc}</span>${reskin}`;
+  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devLaunches??'?',fmtMc(t.devAth),t.devExited,t.devReskin,t.devRugRate==null?'?':Math.round(t.devRugRate*100))}">${lbl} ${sc}</span>${reskin}`;
 }
 /* Dev 信誉卡（点击代币行 → 右下角详情）：复刻 demo 的「信誉分 + 历史发币/rug/存活/换皮重发」。
    数据来自 portfolio created-tokens 查 dev 钱包发币历史。devScore==null（未评估）则不渲染卡。 */
@@ -828,17 +831,19 @@ function devCard(r){
   const sc=Math.round(r.devScore*100);
   const cls=r.devScore>=0.7?'good':r.devScore<0.45?'bad':'mid';
   const trust=r.devScore>=0.45?t('dev_trust'):t('dev_distrust');
-  const surv=(r.devSurv==null)?'?':Math.round(r.devSurv*100)+'%';
-  const survBad=(r.devSurv!=null&&r.devSurv<0.05);          // 开外盘率 <5% = 工厂号
-  const inner=r.devInner??'?', innerBad=(r.devInner!=null&&r.devInner>50);
+  const launches=r.devLaunches??'?';
+  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` (${Math.round(r.devRugRate*100)}%)`;
+  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner has-tip" data-tip="${t('dev_inner_tip')}">+${r.devInner} ${t('dev_k_inner')}</span>`:'';
+  // 安全扫描风险行（仅在最近发币里检出不安全时显示）
+  const sec=(r.devSecUnsafe>0)?`<div class="dcrisk">${t('dev_sec_warn',r.devSecUnsafe,r.devSecChecked,(r.devSecRisks||[]).join(' · '))}</div>`:'';
   return `<div class="devcard ${cls}">
     <div class="dctop"><span class="dclbl">${t('dev_rep_label')}</span><span class="dcscore">${sc}<small>/100</small></span><span class="dctrust">${trust}</span></div>
     <div class="dcgrid">
-      <div class="dccell"><span class="dck">${t('dev_k_open')}</span><span class="dcv">${r.devLaunches??'?'}</span></div>
-      <div class="dccell"><span class="dck has-tip" data-tip="${t('dev_inner_tip')}">${t('dev_k_inner')}</span><span class="dcv ${innerBad?'bad':''}">${inner}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_rate')}</span><span class="dcv ${survBad?'bad':(r.devSurv>=0.5?'good':'')}">${surv}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_launches')}</span><span class="dcv">${launches} ${inner}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_rug')}</span><span class="dcv ${rugN>0?'bad':'good'}">${rugN}${rugPct}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_alive')}</span><span class="dcv">${r.devAlive??'?'}</span></div>
       <div class="dccell"><span class="dck">${t('dev_k_reskin')}</span><span class="dcv ${r.devReskin?'bad':'good'}">${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span></div>
-    </div></div>`;
+    </div>${sec}</div>`;
 }
 /* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
 function fmtAge(min){
@@ -893,9 +898,9 @@ const COL={ACTION:'var(--lime)',WARN:'var(--amber)',SKIP:'var(--clay)',BLOCK:'va
 function priCalc(t){const c=Math.min(28,9*Math.log10(1+(t.smc||0)));let s=t.conv*38+c+(1-Math.min(t.top10||0,1))*14+((t.ren)?6:0)+(t.crowd==='early'?10:t.crowd==='late'?-15:0);return Math.max(0,Math.min(99,Math.round(s)));}
 const SEED=[
  {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.94,devLaunches:5,devInner:5,devSurv:1.0,devAlive:5,devRugged:0,devRugRate:0,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_cleancat'},
- {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'-',conv:0,status:'reject',died:3,devScore:.06,devLaunches:140,devInner:600,devSurv:.02,devAlive:3,devRugged:137,devRugRate:.98,devExited:false,devReskin:false,reasonK:'rs_dev_factory'},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'-',conv:0,status:'reject',died:3,devScore:.06,devLaunches:140,devInner:600,devSurv:.02,devAlive:3,devRugged:137,devRugRate:.98,devSecUnsafe:1,devSecChecked:3,devSecRisks:['可增发'],devExited:false,devReskin:false,reasonK:'rs_dev_factory'},
  {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,devScore:.45,devLaunches:12,devInner:15,devSurv:.55,devAlive:7,devRugged:5,devRugRate:.45,devExited:true,devReskin:false,exitK:'exit_ladder',thesisK:'th_basepepe'},
- {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'-',conv:0,status:'reject',died:3,devScore:.0,devLaunches:180,devInner:2000,devSurv:.01,devAlive:2,devRugged:178,devRugRate:.99,devExited:false,devReskin:true,reasonK:'rs_dev_reskin'},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'-',conv:0,status:'reject',died:3,devScore:.0,devLaunches:180,devInner:2000,devSurv:.01,devAlive:2,devRugged:178,devRugRate:.99,devSecUnsafe:2,devSecChecked:3,devSecRisks:['可增发'],devExited:false,devReskin:true,reasonK:'rs_dev_reskin'},
  {sym:'BUNDLED',address:'5sFgUaXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ3yQ',age:33,hp:false,ren:true,bund:.41,dev:.25,top10:.55,smc:8,degen:6,kol:2,crowd:'early',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_bundled'},
  {sym:'RUGPULL',address:'8vR7tWn4bYj6cLwZ3sFgUaXpBn2dMfTqVrJkHx9pQ5mKzR',age:15,hp:true,ren:false,bund:.22,dev:.18,top10:.61,smc:1,degen:1,kol:0,crowd:'crowded',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_rugpull'},
  {sym:'INJECT',inj:true,address:'3aXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ5sFgUwH',age:20,hp:false,ren:true,bund:.09,dev:.05,top10:.33,smc:0,degen:0,kol:0,crowd:'early',v:'-',conv:0,status:'reject',died:2,reasonK:'rs_inject'},
@@ -939,7 +944,7 @@ function normalize(data){
       hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
       bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
       smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
-      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
+      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devAlive:(f.dev_alive==null?null:f.dev_alive),devRugged:(f.dev_rugged==null?null:f.dev_rugged),devRugRate:(f.dev_rug_rate==null?null:f.dev_rug_rate),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devSecUnsafe:(f.dev_sec_unsafe==null?null:f.dev_sec_unsafe),devSecChecked:(f.dev_sec_checked==null?null:f.dev_sec_checked),devSecRisks:(f.dev_sec_risks||[]),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
       v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
       warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
       reason:dec.reason,address:dec.address,

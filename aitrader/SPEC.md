@@ -46,7 +46,7 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
   → 取前 top_n_prefilter 行 → 直接用行字段建特征(build_from_row, 零额外 cli)
   → 确定性硬门槛【先跑】(避雷 + 共识)            ← 砍掉大半
   → 初排(priority_score, 趋势动能模型)           ← 先按动能分排序
-  → dev 评估维度(只对前 dev_pool_n 个查 dev 钱包发币历史 portfolio created-tokens, TTL 缓存) → dev 子分(开外盘率主导)折进 priority_score 重排 + 低分(工厂号/内盘沉底/换皮)过滤砍掉
+  → dev 评估维度(只对前 dev_pool_n 个查 dev 钱包发币历史 created-tokens + 最近 N 币 token security 安全扫描, TTL 缓存) → dev 子分(存活率主导+安全扣分)折进 priority_score 重排 + 低分(工厂号/发不安全币/换皮)过滤砍掉
   → 取前 llm_max 个                              ← 再砍
   → LLM 只对幸存者解释(verdict/conviction/crowdedness/thesis)
   → 产出候选 + 代码算仓位(不执行)
@@ -57,13 +57,14 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
 - `priority_score` = 加权(5m 动能·30 + 1h 动能·12 + 买卖比·18 + 换手·12 + 共识·12 + 安全筹码·10 + **dev 评估·12**)，各子分归一化；1h 阴跌则整体 ×0.4 沉底。
 - **dev 评估维度**（`dev_score`，纯代码 0..1；**既是排序子分、也是过滤门**，实现 demo 的真实算法）：
   - **数据源 = `portfolio created-tokens` 查 dev 钱包发币历史**：先用 `token info` 取 `dev.creator_address`，再 `portfolio created-tokens --wallet <creator>` 一次拿回该 dev 全部发币 + 逐币状态（`is_open`/`liquidity_less_4k`/`market_cap`），顶层直接给 `inner_count`(**内盘沉底**：一直卡在 bonding curve 内盘、从没打满开外盘的币数)、`open_count`(**开外盘**：打满毕业到正经池的数)、`open_ratio`(**开外盘率/毕业率** = 开外盘 /(开外盘+内盘沉底))、`creator_ath_info`。
-  - **主分 = 开外盘率 `survival_rate`(open_ratio)**：dev 历史发的币打满开外盘的比例。100%→优质、~1%→工厂号（这是 demo「存活/rug」的真实来源）。
-  - **内盘沉底强罚 `inner_count`**：海量币卡在内盘从没开外盘（动辄上千）= 批量发币工厂（50→0,1000→满 -0.35）。
-  - **历史战绩 `ath_mc`** 小幅加分，但**按开外盘率门控**（工厂的一次金狗是撞大运，不计入）。
+  - **主分 = 存活率（逐币分类）**：对 created-tokens 行内每个币按 `is_open + liquidity_less_4k` 判存活 vs rug，存活率 = 存活数/分析数（1 - rug 率）。100%→优质、~1%→工厂号（这就是 demo 卡片「历史发币/rug次数/存活」的来源）。
+  - **逐币安全扫描 `sec_risk_rate`**（用户要求）：对该 dev **最近 `dev_sec_scan_n`(3) 个发币**逐个查 `token security`，按链判不安全——**Sol**：可增发(未弃 mint)/未弃冻结权/蜜罐；**EVM**：未开源/貔貅(不可卖)/蜜罐。不安全比例越高越降分，并在卡片+拒绝理由里提示风险。
+  - **内盘沉底强罚 `inner_count`**：海量币卡在内盘从没开外盘（动辄上千）= 批量发币工厂（50→0,1000→满 -0.30）。
+  - **历史战绩 `ath_mc`** 小幅加分，但**按存活率门控**（工厂的一次金狗是撞大运，不计入）。
   - **换皮重发 reskin**：`image_dup_count`(dev 复用同一张图连环发新币 = 同套路反复重发)（对应 demo 的「换皮重发」；正常币 image_dup≤1 不误伤）。⚠️ **不用 `twitter_name_change_history`**：代币的推特号是项目方随意填的概念关联、非验证过的 dev 身份，拿它判换皮会误伤（用户指正）。**已清仓本币 exited** 轻罚；`cto_flag` 小幅正向。
   - **过滤门**：`dev_score < min_dev_score`(0.15) → 直接砍（reason 如「Dev 信誉低（评分 0/100：内盘沉底 10659 · 开外盘率 1% · 换皮重发 · 已清仓本币）」），对应 demo 扫描流里的「⛔ Dev 连环 rug」。⚠️ 这是对原「dev 只排序不避雷」铁律的**有意放宽**（用户要求）：dev 现在能拦下工厂号/连环换皮，不再只是降分。
   - 回退：`created-tokens` 查不到（无 survival_rate）→ 退化用 `open_count`+`ath` 战绩打折，不阻断。
-  - 成本：每个评估 dev = `token info` + `created-tokens` 两次 cli，**仅对初排靠前的 `dev_pool_n`(24) 个幸存者**，按地址缓存 `dev_info_ttl_s`(600s) 跨轮复用。
+  - 成本：每个评估 dev = `token info` + `created-tokens` + 最近 `dev_sec_scan_n`(3) 个币的 `token security` ≈ 5 次 cli，**仅对初排靠前的 `dev_pool_n`(24) 个幸存者**，整份 dev 画像按地址缓存 `dev_info_ttl_s`(600s) 跨轮复用（安全扫描结果一并缓存，不每轮重扫）。
   - 真实反例校准：LMAO! dev（内盘沉底 10659·开外盘 124·**开外盘率 1.1%**·改名 10·已清仓·4 分钟 rug）→ v3 算 **0.0**、被过滤门直接砍；对照干净 dev（发 3 全开外盘·一个 $5M）→ 0.93 优质。
 - `LLMJudge`（启发式占位，仍是动能逻辑）：**金狗 vs 接盘**靠买占比区分——
   1h&5m 双跌 → reject(阴跌)；买占比 < `buy_ratio_reject`(0.42) → reject(卖压主导/接盘位)；
@@ -112,7 +113,7 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
 |---|---|---|---|
 | `market trending` | 扫描 | 拉趋势榜候选（行内已含全部尽调字段） | **每轮 1 次（唯一常态 cli）** |
 | `token info` | 尽调/价格/dev评估 | `do_buy` 建仓价；持仓掉榜时查现价(token_price)；**dev 评估取行内 `dev` 对象(dev_info)** | 买入/掉榜持仓 + 每轮前 dev_pool_n 个幸存者(带 600s 缓存) |
-| `token security` | 逃生 | 归一化安全快照；持仓**在榜则复用 trending 行**，掉榜才单独查 | 仅掉榜持仓 |
+| `token security` | 逃生/dev安全扫描 | 归一化安全快照；持仓在榜复用 trending 行；**dev 评估对其最近 dev_sec_scan_n 个发币逐个查（可增发/未弃权/未开源/貔貅）** | 掉榜持仓 + dev 安全扫描(带 600s 缓存) |
 | `token holders` | — | 已基本不用（特征取自 trending 行） | 几乎不调 |
 | `portfolio stats` | — | **已废弃**（共识改用 trending 的 degen/renowned 计数，不再逐钱包查胜率） | 不调 |
 | `portfolio created-tokens` | dev评估 | 查 dev 钱包发币历史（内盘沉底量/开外盘率/逐币状态）→ dev_score 主数据源 | 每轮前 dev_pool_n 个幸存者(带 600s 缓存) |
@@ -250,7 +251,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 
 筛选结果表列：TOKEN(可点复制 Ticker + 雷达图标=该币已持仓) / 规则→排序→LLM(闸门图标) / 安全(蜜罐·放权徽章) / BUND / DEV / T10 / 聪明钱/KOL(degen/kol) / **DEV史(dev 历史评估分 优质/中性/弱 + 0~100；hover 出历史最佳市值/发币次数/是否清仓；未评估的显 —)** / 时机(早期·横盘·过热·阴跌) / LLM(pass/watch/reject) / 优先级 / 决策。
 > 注意 `DEV`(持仓%) 与 `DEV史`(dev 历史声誉) 是两列：前者是 dev 当前持仓占比(gate1 避雷)，后者是 dev 评估(见 §4)的排序子分+过滤门。`DEV史` 仅对每轮查过 dev 历史的少数幸存者(top dev_pool_n)有值，止步 gate1/2 或排序池外的显 `—`；dev 评分过低的会被过滤门砍掉(scan 流里出现「Dev 信誉低」kill 理由)。
-- **Dev 信誉卡**(点代币行 → 右下角详情)：信誉分 0~100 + 开外盘/内盘沉底/开外盘率/换皮重发 + 可信/不可信，数据来自 `portfolio created-tokens`。
+- **Dev 信誉卡**(点代币行 → 右下角详情)：信誉分 0~100 + **历史发币/rug次数(率)/存活/换皮重发** + 可信/不可信 + 安全扫描风险行（最近发币里检出不安全币时显示「⚠ 近 N 个发币 M 个不安全：可增发/貔貅…」）。数据来自 `portfolio created-tokens` + 逐币 `token security`。
 - **TOKEN 列**：Ticker 下方显示 CA(前5…后4，点击新窗口开 GMGN 代币页) + 代币年龄(d/h/m/s，<1h 标绿)；点 Ticker 复制到剪贴板。
 - **行点击**：展开下方解读详情，再点收起；默认不展开(省空间)。
 - **「只看持仓」过滤**：TOKEN 旁 siren 图标开关，只显示已持仓的币。
@@ -282,7 +283,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 - 避雷：`require_renounced_mint`、`max_buy_tax/max_sell_tax=0.10`、`max_rug_ratio=0.60`、`max_bundler_ratio=0.30`、`max_dev_holding_pct=0.10`、`max_top10_concentration=0.40`。
 - 共识：`min_smart_money_confluence=1`（=smart_degen+renowned）。
 - 排序：`rank_weights={mom5m:30,mom1h:12,buy_pressure:18,turnover:12,consensus:12,safety:10,dev:12}`；阴跌沉底 `momentum_reject_chg1h=-0.12/chg5m=-0.06`；金狗/接盘 `buy_ratio_pass=0.50/buy_ratio_reject=0.42`。
-- dev 评估：`dev_pool_n=24`（初排后取前 N 个查 dev 历史，>llm_max 以便 dev 重排 gate3 边界）、`dev_info_ttl_s=600`（dev 历史按地址缓存秒数）、`min_dev_score=0.15`（dev 评分过滤门：低于此分的工厂号/连环换皮直接砍）。
+- dev 评估：`dev_pool_n=24`（初排后取前 N 个查 dev 历史，>llm_max 以便 dev 重排 gate3 边界）、`dev_info_ttl_s=600`（dev 画像按地址缓存秒数）、`min_dev_score=0.15`（dev 评分过滤门：低于此分的工厂号/连环换皮直接砍）、`dev_sec_scan_n=3`（对 dev 最近 N 个发币逐个查 token security 做安全扫描）。
 - 风控：`max_concurrent_positions=20`（**感受阶段放宽**，真实上线前应调回 2~3）、`max_total_exposure_sol=1.0`、`daily_loss_cap_sol=0.5`、`kill_switch_consec_losses=3`。
 - 安全护栏：`LIVE_TRADING_DISABLED`（app.py 顶部）。**当前为 `False`（已解锁真实交易）**：LIVE 模式 + 已配 `GMGN_PRIVATE_KEY` 时，「一键买入/平仓」会经签名密钥**真实发单、动用资金、不可逆**。仍是人在环（只有点按钮才成交），SHADOW 仍是默认安全态、需手动切 LIVE 才真发。置回 `True` 即可一键封死所有链上写。
   - **真实下单前置**：`~/.config/gmgn/.env` 的 `GMGN_PRIVATE_KEY` 必须非空（签名密钥），否则 `gmgn-cli swap/order` 报错；前端会显示「链上买入失败：…」清晰原因，不建仓。
@@ -300,7 +301,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 **本会话已完成（真实数据 · 只读行情 · 买入做假 · 动能策略 · 多链 · 可演示托管）**
 - gmgn-cli 1.3.9 适配 + `build_from_row`（零额外 cli）+ 真实字段判据（见 §6）。
 - **排序改趋势动能模型** + **LLMJudge 金狗/接盘逻辑**（见 §4）：暴涨不一刀切，买占比区分跟/砍。
-- **dev 评估维度 v3**（见 §4）：数据源换成 **`portfolio created-tokens` 查 dev 钱包发币历史**（实现 demo 真实算法）——**开外盘率(open_ratio) 主导** + 内盘沉底(inner_count)/换皮重发/已清仓减分。既作**排序子分**（折进 `priority_score`）、又作**过滤门**（`min_dev_score` 砍工厂号，scan 流出现「Dev 信誉低」kill）。**前端**：`DEV史` 列(优质/中性/弱 + 0~100 + 换皮红标) + **点代币行右下角弹 Dev 信誉卡**(复刻 demo：信誉分/开外盘/内盘沉底/开外盘率/换皮重发/可信)。真实校准：LMAO! dev（开外盘率 1.1%·内盘沉底 10659）→ 0.0 被过滤；Mock 同构合成、无 key 可跑。
+- **dev 评估维度 v3**（见 §4）：数据源 = **`portfolio created-tokens` 查 dev 钱包发币历史 + 最近 N 币 `token security` 逐币安全扫描**（实现 demo 真实算法）——**逐币存活率主导** + 发不安全币(可增发/未弃权/未开源/貔貅)/内盘沉底/换皮/已清仓减分。既作**排序子分**、又作**过滤门**（`min_dev_score` 砍工厂号，scan 流出现「Dev 信誉低」kill）。**前端**：`DEV评分` 列 + **点代币行右下角弹 Dev 信誉卡**（信誉分 + 历史发币/rug次数(率)/存活/换皮重发 + 安全扫描风险行 + 可信）。真实校准：LMAO! dev（rug率 98%·内盘沉底 10659）→ 0.0 被过滤；Mock 同构合成、无 key 可跑。
 - **持仓真实价格涨跌**（entry_price/cur_price/pnl）+ **落盘持久化**（positions.json，reload/重启不丢）+ **按链隔离** + **取消监控**(/api/unmonitor)。
 - **逃生监控修误报**：删 burn_ratio 信号（不可逆+跨源口径），只留 honeypot/renounced_mint/top10。
 - **多链切换**（SOL/BSC/Base/ETH）：**链改为请求维度**（无全局当前链）——按链缓存 adapter + 按链 trending 短缓存(3s，同链多 tab 共享一次 cli)；前端每 tab 用 sessionStorage 各自持链，N tab 各看各链互不干扰；后台 tab 暂停轮询省配额。按链记忆命令(ST.trending_cmds)、买入单位/数量按链。
@@ -326,7 +327,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 ## 12. 关键数据结构（实现参考）
 
 - `TokenFeatures`（dataclass）：由 `build_from_row` 从 trending 行建。含 `symbol_safe`；动能 `chg_1h/chg_5m/buys/sells/buy_ratio/turnover/liquidity`；安全 `honeypot/renounced_mint/renounced_freeze/burn_ratio/buy_tax/sell_tax/rug_ratio`；筹码 `bundler/dev_hold/top10`；共识 `smart_degen/renowned/sniper_count/sm_confluence(=degen+renowned)`；dev 评估 `dev`(归一化 dev 历史 dict, `_dev_from_info`)+`dev_eval`(dev 子分 0..1, 初排时为 None)。（已删旧字段 `sec_score/lp_burned/sm_verified/sm_distributing/chg_since_sm`。）
-- `dev`（DevProfile dict）：`creator`(dev 钱包地址)、`launches`(open_count 开外盘/毕业数)、`inner_count`(内盘沉底:卡内盘没开外盘的币数)、`survival_rate`(open_ratio 开外盘率/毕业率)、`ath_mc`(历史最佳币峰值)、`exited`(已清仓本币)、`image_dup`(复用同图=换皮信号)、`del_post_count`、`cto`。Live = `token info`(creator/换皮/已清仓) + `portfolio created-tokens`(发币历史/开外盘率，由 `_merge_created` 并入)；Mock 同构合成。`_dev_reskin(dp)` 由 `name_changes`/`image_dup` 算换皮重发强度(0..1)。
+- `dev`（DevProfile dict）：`creator`(dev 钱包地址)、`analyzed`/`alive`/`rugged`/`rug_rate`(逐币分类:分析的币数/存活/rug数/rug率)、`launches`(open_count 开外盘)、`inner_count`(内盘沉底)、`survival_rate`(open_ratio 开外盘率)、`sec_checked`/`sec_unsafe`/`sec_risks`/`sec_risk_rate`(安全扫描:查了几个/几个不安全/风险标签/不安全率)、`ath_mc`、`exited`、`image_dup`(复用同图=换皮信号)、`cto`。Live = `token info`(creator/换皮/已清仓) + `portfolio created-tokens`(发币历史，`_merge_created` 逐币分类) + 最近 N 币 `token security`(`_scan_dev_security`)；Mock 同构合成。`_dev_reskin(dp)` 由 `image_dup` 算；`_security_unsafe(sec,chain)` 按链判单币是否不安全。
 - `LLMVerdict`：`verdict(pass/watch/reject)`、`conviction(0..1)`、`crowdedness(early/crowded/late/fading/distributing)`、`red_flags`、`thesis`。
 - 持仓 position：`{symbol,address,chain,size_sol,pnl,cycles,entry_price,cur_price,entry{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}}`。`entry` 是建仓安全快照(`assess_escape` 做 diff，但已不再用 burn_ratio diff)；落盘到 `outputs/positions.json`。
 - 适配器归一化 `token_security` / `_sec_from_row`：`{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}`，Live 与 Mock 与 trending 行三者口径需一致（burn_ratio 是已知不一致点，故逃生不用它）。
