@@ -45,14 +45,17 @@ Abandoned approach: an auto-executing bot (`swap` triggered autonomously by code
 trending (cheap, 1 cli call, the row already contains all due-diligence fields)
   → take the first top_n_prefilter rows → build features directly from row fields (build_from_row, zero extra cli)
   → deterministic hard gates [run first] (rug gate + consensus)        ← cuts most
-  → score ranking (priority_score, trend momentum model)               ← cuts again, keep only llm_max
+  → initial ranking (priority_score, trend momentum model)             ← first sort by momentum score
+  → dev evaluation dimension (query dev history for the top dev_pool_n only, TTL-cached) → fold dev sub-score into priority_score, re-rank
+  → take the first llm_max                                             ← cuts again
   → LLM only explains the survivors (verdict/conviction/crowdedness/thesis)
   → produce candidates + code-computed position size (does not execute)
   → [user clicks one-click buy] → one more hard risk-control pass before trading → SHADOW record / LIVE real order
 ```
 
 **Ranking = trend momentum model** (the coin-selection objective chosen by the user, see `CFG["rank_weights"]`):
-- `priority_score` = weighted(5m momentum·30 + 1h momentum·12 + buy/sell ratio·18 + turnover·12 + consensus·12 + safe float·10), with each sub-score normalized; if 1h is bleeding down, the whole thing is ×0.4 to sink it.
+- `priority_score` = weighted(5m momentum·30 + 1h momentum·12 + buy/sell ratio·18 + turnover·12 + consensus·12 + safe float·10 + **dev eval·12**), with each sub-score normalized; if 1h is bleeding down, the whole thing is ×0.4 to sink it.
+- **dev evaluation dimension** (`dev_score`, pure-code 0..1 bonus term): a past golden runner (`ath_mc`) adds significant points; serial launching (`creator_open_count`>50) / deleting promo tweets (`twitter_del_post_token_count`) / having exited this token (`creator_token_status`+balance) subtract; community takeover (CTO) provides a floor. Data comes from the `dev` object in `token info` — **an extra cli call is made only for the top `dev_pool_n`(24) survivors after initial ranking**, results cached per-address for `dev_info_ttl_s`(600s) and reused across cycles rather than re-fetched. Not found → neutral 0.5, no false kill, no blocking.
 - `LLMJudge` (heuristic placeholder, still momentum logic): **golden runner vs bag-holder** is distinguished by buy ratio —
   1h & 5m both down → reject (bleeding down); buy ratio < `buy_ratio_reject` (0.42) → reject (sell-pressure dominant / bag-holder spot);
   buy ratio ≥ `buy_ratio_pass` (0.50) and 5m not weakening → pass (a moonshot/late one still follows the golden runner); `late` (1h ≥ 300%) is only a high-position risk tag, no longer an automatic veto.
@@ -99,7 +102,7 @@ Full trending command example:
 | Command | Stage | Purpose | Actual call frequency |
 |---|---|---|---|
 | `market trending` | scan | pull trending candidates (row already contains all due-diligence fields) | **1× per round (the only steady-state cli)** |
-| `token info` | due diligence/price | `do_buy` entry price; current price for positions that fell off the board (token_price) | only on buy / off-board positions |
+| `token info` | due diligence/price/dev eval | `do_buy` entry price; current price for off-board positions (token_price); **dev eval reads the row's `dev` object (dev_info)** | buy / off-board positions + top dev_pool_n survivors per cycle (600s cached) |
 | `token security` | escape | normalized safety snapshot; for a position **still on board, reuse the trending row**, only query separately when off board | only off-board positions |
 | `token holders` | — | essentially unused (features come from the trending row) | almost never called |
 | `portfolio stats` | — | **deprecated** (consensus uses trending's degen/renowned count, no longer per-wallet win-rate lookups) | never called |
@@ -266,7 +269,8 @@ Key parameters are centralized in `app.py`'s `CFG`. Relevant to this session:
 - `top_n_prefilter=100`, `llm_max=20` (the heuristic placeholder costs nothing, so it's widened to reduce gate3 over-kills; tighten again once a real LLM is connected).
 - Rug gate: `require_renounced_mint`, `max_buy_tax/max_sell_tax=0.10`, `max_rug_ratio=0.60`, `max_bundler_ratio=0.30`, `max_dev_holding_pct=0.10`, `max_top10_concentration=0.40`.
 - Consensus: `min_smart_money_confluence=1` (= smart_degen + renowned).
-- Ranking: `rank_weights={mom5m:30,mom1h:12,buy_pressure:18,turnover:12,consensus:12,safety:10}`; bleeding-down sink `momentum_reject_chg1h=-0.12/chg5m=-0.06`; golden-runner/bag-holder `buy_ratio_pass=0.50/buy_ratio_reject=0.42`.
+- Ranking: `rank_weights={mom5m:30,mom1h:12,buy_pressure:18,turnover:12,consensus:12,safety:10,dev:12}`; bleeding-down sink `momentum_reject_chg1h=-0.12/chg5m=-0.06`; golden-runner/bag-holder `buy_ratio_pass=0.50/buy_ratio_reject=0.42`.
+- Dev eval: `dev_pool_n=24` (after initial ranking, query dev history for the top N; >llm_max so dev can re-rank the gate3 boundary), `dev_info_ttl_s=600` (per-address dev-history cache seconds).
 - Risk control: `max_concurrent_positions=20` (**relaxed for the feel-it-out phase**, should be set back to 2~3 before going live), `max_total_exposure_sol=1.0`, `daily_loss_cap_sol=0.5`, `kill_switch_consec_losses=3`.
 - Safety guardrail: `LIVE_TRADING_DISABLED` (top of app.py). **Currently `False` (real trading unlocked)**: in LIVE mode + with `GMGN_PRIVATE_KEY` configured, "one-click buy/sell" places a **real order via the signing key, using real funds, irreversibly**. It's still human-in-the-loop (a trade happens only when you click the button), SHADOW is still the default safe state, and you must manually switch to LIVE for it to fire for real. Set it back to `True` to instantly seal off all on-chain writes.
   - **Real-order prerequisite**: `GMGN_PRIVATE_KEY` in `~/.config/gmgn/.env` must be non-empty (the signing key), otherwise `gmgn-cli swap/order` errors; the frontend shows "on-chain buy failed: …" with a clear reason and records no position.
@@ -284,6 +288,7 @@ Key parameters are centralized in `app.py`'s `CFG`. Relevant to this session:
 **Done this session (real data · read-only market · faked buys · momentum strategy · multi-chain · demonstrable hosting)**
 - gmgn-cli 1.3.9 adaptation + `build_from_row` (zero extra cli) + real-field criteria (see §6).
 - **Ranking switched to the trend momentum model** + **LLMJudge golden-runner/bag-holder logic** (see §4): moonshots aren't cut wholesale, the buy ratio distinguishes follow vs cut.
+- **New dev evaluation dimension** (see §4): the `dev` object from `token info` → `dev_score` (past golden runner adds / serial launching · deleted promo tweets · exited-this-token subtract) as a ranking sub-score folded into `priority_score`; two-pass ranking (initial sort → query dev history only for the top 24 → re-rank), results cached per-address for 600s to save quota; Mock synthesizes an isomorphic profile so it runs with no key.
 - **Real position price change** (entry_price/cur_price/pnl) + **disk persistence** (positions.json, survives reload/restart) + **per-chain isolation** + **stop monitoring** (/api/unmonitor).
 - **Escape-monitor false-positive fix**: removed the burn_ratio signal (irreversible + cross-source definition), keeping only honeypot/renounced_mint/top10.
 - **Multi-chain switching** (SOL/BSC/Base/ETH): **chain made a per-request dimension** (no global current chain) — adapter cached per chain + short per-chain trending cache (3s, multiple tabs on the same chain share one cli call); the frontend keeps each tab's chain in sessionStorage, N tabs each view their own chain without interfering; background tabs pause polling to save quota. Per-chain command memory (ST.trending_cmds), buy unit/amount per chain.
@@ -308,7 +313,8 @@ Key parameters are centralized in `app.py`'s `CFG`. Relevant to this session:
 
 ## 12. Key data structures (implementation reference)
 
-- `TokenFeatures` (dataclass): built by `build_from_row` from the trending row. Includes `symbol_safe`; momentum `chg_1h/chg_5m/buys/sells/buy_ratio/turnover/liquidity`; safety `honeypot/renounced_mint/renounced_freeze/burn_ratio/buy_tax/sell_tax/rug_ratio`; float `bundler/dev_hold/top10`; consensus `smart_degen/renowned/sniper_count/sm_confluence(=degen+renowned)`. (The old fields `sec_score/lp_burned/sm_verified/sm_distributing/chg_since_sm` have been removed.)
+- `TokenFeatures` (dataclass): built by `build_from_row` from the trending row. Includes `symbol_safe`; momentum `chg_1h/chg_5m/buys/sells/buy_ratio/turnover/liquidity`; safety `honeypot/renounced_mint/renounced_freeze/burn_ratio/buy_tax/sell_tax/rug_ratio`; float `bundler/dev_hold/top10`; consensus `smart_degen/renowned/sniper_count/sm_confluence(=degen+renowned)`; dev eval `dev` (normalized dev-history dict, `_dev_from_info`) + `dev_eval` (dev sub-score 0..1, None during initial ranking). (The old fields `sec_score/lp_burned/sm_verified/sm_distributing/chg_since_sm` have been removed.)
+- `dev` (DevProfile dict): `open_count` (creator_open_count, lifetime tokens launched), `status`/`balance` (creator_token_status/balance), `exited` (already sold out of this token), `ath_mc` (peak market cap of dev's best prior token), `del_post_count` (deleted promo tweets), `create_count`, `cto`. Live reads it from the `dev` object in `token info`; Mock synthesizes an isomorphic one.
 - `LLMVerdict`: `verdict(pass/watch/reject)`, `conviction(0..1)`, `crowdedness(early/crowded/late/fading/distributing)`, `red_flags`, `thesis`.
 - position: `{symbol,address,chain,size_sol,pnl,cycles,entry_price,cur_price,entry{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}}`. `entry` is the entry safety snapshot (`assess_escape` diffs against it, but no longer uses the burn_ratio diff); persisted to `outputs/positions.json`.
 - adapter-normalized `token_security` / `_sec_from_row`: `{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}`; Live, Mock, and the trending row must share the same definition (burn_ratio is the known inconsistency point, which is why escape doesn't use it).

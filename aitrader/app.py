@@ -70,6 +70,10 @@ CFG = {
     # 选择质量：共识 = 聪明钱(smart_degen) + 知名KOL(renowned) 计数之和
     "min_smart_money_confluence": 1,
     "min_llm_conviction": 0.6,
+    # dev 评估维度：初排后只对前 dev_pool_n 个幸存者额外查 dev 历史（token info 的 dev 对象），
+    # 结果按地址缓存 dev_info_ttl_s 秒（dev 历史变化慢，跨轮复用、不每轮重拉，省 cli 配额）。
+    "dev_pool_n": 24,            # >llm_max，让 dev 子分能重排 gate3 名额边界
+    "dev_info_ttl_s": 600,
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",
     "rank_weights": {
@@ -79,6 +83,7 @@ CFG = {
         "turnover": 12,     # 换手率 = 成交量/市值
         "consensus": 12,    # 聪明钱+KOL 共识（降权，避免老盘累计量霸榜）
         "safety": 10,       # 放权 + 筹码分散
+        "dev": 12,          # dev 评估子分（历史金狗加分 / 连环发币·删推·已清仓减分）
     },
     "momentum_reject_chg1h": -0.12,  # 1h 跌超 12%
     "momentum_reject_chg5m": -0.06,  # 且 5m 仍在跌 → 判阴跌、LLM reject
@@ -197,6 +202,7 @@ class GMGNAdapter:
     def market_trending(self, **kw) -> list[dict]: raise NotImplementedError
     def token_info(self, addr) -> dict: raise NotImplementedError
     def token_price(self, addr) -> float: raise NotImplementedError
+    def dev_info(self, addr) -> dict: raise NotImplementedError   # dev 评估：归一化 creator/dev 历史
     def token_security(self, addr) -> dict: raise NotImplementedError
     def token_holders(self, addr) -> dict: raise NotImplementedError
     def portfolio_stats(self, wallet) -> dict: raise NotImplementedError
@@ -255,6 +261,11 @@ class LiveGMGN(GMGNAdapter):
         p = d.get("price")
         return _f(p.get("price")) if isinstance(p, dict) else _f(p)
 
+    def dev_info(self, addr):
+        # dev 评估维度的数据源：token info 行内的 dev 对象（含 creator 历史/最佳币市值/删推等）
+        d = self._cli("token", "info", "--address", addr)
+        return _dev_from_info(d.get("data", d) if isinstance(d, dict) else {})
+
     def token_security(self, addr):
         # 归一化为逃生监控所需的安全快照（真实 1.3.9 无 security_score）
         d = self._cli("token", "security", "--address", addr)
@@ -312,7 +323,9 @@ class MockGMGN(GMGNAdapter):
         def tok(symbol, price, mcap, vol, chg1h, *, chg5m=None, buys=600, sells=400,
                 honeypot=0, mint=1, freeze=1, burn=0.0,
                 buy_tax=0.0, sell_tax=0.0, rug=0.0, bundler=0.05, dev=0.03, top10=0.25,
-                degen=0, renowned=0, sniper=0, age_min=45):
+                degen=0, renowned=0, sniper=0, age_min=45,
+                dev_open=6, dev_status="creator_hold", dev_bal=1.0, dev_ath_mc=0.0,
+                dev_delpost=0, dev_cto=0):
             if chg5m is None:
                 chg5m = round(chg1h * 0.3, 2)   # 默认 5m 与 1h 同向
             return dict(symbol=symbol, price=price, market_cap=mcap, volume=vol,
@@ -321,11 +334,15 @@ class MockGMGN(GMGNAdapter):
                         renounced_mint=mint, renounced_freeze_account=freeze, burn_ratio=burn,
                         buy_tax=buy_tax, sell_tax=sell_tax, rug_ratio=rug, bundler_rate=bundler,
                         dev_team_hold_rate=dev, top_10_holder_rate=top10, smart_degen_count=degen,
-                        renowned_count=renowned, sniper_count=sniper, age_min=age_min)
+                        renowned_count=renowned, sniper_count=sniper, age_min=age_min,
+                        # dev 评估维度（与真实 token info 的 dev 对象同构）
+                        dev_open_count=dev_open, dev_token_status=dev_status, dev_token_balance=dev_bal,
+                        dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto)
         return {
             # 干净 + 强共识 → 高优先级 ACTION
             "CLEANCATxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
-                tok("CLEANCAT", 0.0021, 180_000, 950_000, 35.0, bundler=0.04, dev=0.03, top10=0.22, degen=2, renowned=1, age_min=42),
+                tok("CLEANCAT", 0.0021, 180_000, 950_000, 35.0, bundler=0.04, dev=0.03, top10=0.22, degen=2, renowned=1, age_min=42,
+                    dev_open=5, dev_ath_mc=8_000_000),   # 优质 dev：历史出过金狗、发币少
             # honeypot → gate1 避雷
             "RUGPULLyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy":
                 tok("RUGPULL", 0.0009, 60_000, 400_000, 180.0, honeypot=1, mint=0, freeze=0, bundler=0.22, dev=0.18, top10=0.61, degen=1),
@@ -337,13 +354,16 @@ class MockGMGN(GMGNAdapter):
                 tok("NOAUTH", 0.003, 120_000, 520_000, 22.0, mint=0, bundler=0.08, dev=0.04, top10=0.30, degen=1),
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
-                tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900),
+                tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
+                    dev_open=40, dev_delpost=3),   # 删推广推文 → 诈骗惯犯，dev 子分重罚
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
-                tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51),
+                tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
+                    dev_open=140, dev_ath_mc=50_000),   # 连环发币工厂号、无像样战绩 → dev 子分低
             # 干净 → ACTION（可能触并发/敞口风控 → risk_warn）
             "BASEPEPEuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu":
-                tok("BASEPEPE", 0.0015, 160_000, 760_000, 31.0, bundler=0.07, dev=0.03, top10=0.30, degen=1, age_min=60),
+                tok("BASEPEPE", 0.0015, 160_000, 760_000, 31.0, bundler=0.07, dev=0.03, top10=0.30, degen=1, age_min=60,
+                    dev_open=12, dev_status="creator_close", dev_bal=0.0),   # dev 已清仓本币 → 利益不对齐，轻罚
             # 干净但零共识 → gate2 共识门
             "LONECOINllllllllllllllllllllllllllllllllllll":
                 tok("LONECOIN", 0.0012, 100_000, 300_000, 18.0, bundler=0.06, dev=0.03, top10=0.28, degen=0, renowned=0),
@@ -376,6 +396,16 @@ class MockGMGN(GMGNAdapter):
         return dict(honeypot=bool(d["is_honeypot"]), renounced_mint=bool(d["renounced_mint"]),
                     renounced_freeze=bool(d["renounced_freeze_account"]),
                     burn_ratio=d["burn_ratio"], top10=d["top_10_holder_rate"])
+
+    def dev_info(self, addr):
+        # 与 LiveGMGN.dev_info 同构（_dev_from_info 的归一化输出）
+        d = self.db[addr]
+        status = d["dev_token_status"]; bal = d["dev_token_balance"]
+        return dict(
+            open_count=d["dev_open_count"], status=status, balance=bal,
+            exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
+            ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
+            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]))
 
     def token_holders(self, addr):
         d = self.db[addr]
@@ -427,6 +457,24 @@ def _b(v) -> bool:
         return v.strip().lower() in ("1", "true", "yes")
     return False
 
+def _dev_from_info(info: dict) -> dict:
+    """从 token info 的 dev 对象归一化出 dev 评估所需字段（Live/Mock 同构）。
+    creator_open_count=dev 历史发币总数；ath_token_info.ath_mc=历史最佳币峰值市值；
+    creator_token_status/balance=是否已清仓本币；twitter_del_post_token_count=删推广推文（诈骗信号）。"""
+    dev = (info or {}).get("dev") or {}
+    ath = dev.get("ath_token_info") or {}
+    status = str(dev.get("creator_token_status") or "")
+    bal = _f(dev.get("creator_token_balance"))
+    return dict(
+        open_count=int(_f(dev.get("creator_open_count"))),
+        status=status, balance=bal,
+        exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
+        ath_mc=_f(ath.get("ath_mc")),
+        del_post_count=int(_f(dev.get("twitter_del_post_token_count"))),
+        create_count=int(_f(dev.get("twitter_create_token_count"))),
+        cto=bool(_b(dev.get("cto_flag"))),
+    )
+
 @dataclass
 class TokenFeatures:
     address: str; symbol_raw: str; symbol_safe: str
@@ -443,6 +491,9 @@ class TokenFeatures:
     renowned: int = 0
     sniper_count: int = 0
     sm_confluence: int = 0   # = smart_degen + renowned
+    # dev 评估维度（额外查 dev 历史后回填；初排时为 None）
+    dev: dict | None = None        # 归一化 dev 历史（_dev_from_info）
+    dev_eval: float | None = None  # dev 子分 0..1（dev_score）
 
 class FeatureExtractor:
     """trending 一行已含几乎全部尽调字段，直接据此建特征（省掉逐个 info/security/holders）。"""
@@ -513,9 +564,10 @@ def hard_gates(f: TokenFeatures):
 # 5. 评分排序（ML 占位 / 砍狠）——只对过了硬门槛的幸存者打分
 #    生产可换成轻量 ML 排序模型；这里是确定性启发式，与前端 priCalc 对齐。
 # ──────────────────────────────────────────────────────────────────────────
-def priority_score(f: TokenFeatures, conv: float, crowd: str) -> int:
+def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None = None) -> int:
     # 趋势动能档：以"现在在不在涨、买盘强不强、量价齐升"为主，共识降权（避免老盘累计量霸榜）。
     # 各子分先归一化到 0..1，再按 CFG['rank_weights'] 加权；1h 阴跌则整体沉底。
+    # dev=dev 评估子分(0..1)，仅对查过 dev 历史的幸存者传入；None 则该维度不参与（初排）。
     w = CFG["rank_weights"]
     s_mom5  = _clamp((f.chg_5m + 0.05) / 0.30)          # -5%→0,  +25%→1（5m 主导）
     s_mom1h = _clamp((f.chg_1h + 0.10) / 0.60)          # -10%→0, +50%→1
@@ -526,9 +578,44 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str) -> int:
               + 0.5 * _clamp((0.40 - f.top10) / 0.40)   # 放权 + 筹码分散
     s = (w["mom5m"] * s_mom5 + w["mom1h"] * s_mom1h + w["buy_pressure"] * s_buy
          + w["turnover"] * s_turn + w["consensus"] * s_cons + w["safety"] * s_safe)
+    if dev is not None:                                 # dev 评估维度（查过 dev 历史才计入）
+        s += w["dev"] * _clamp(dev)
     if f.chg_1h <= CFG["momentum_reject_chg1h"]:        # 阴跌沉底
         s *= 0.4
     return max(0, min(99, round(s)))
+
+def dev_score(dp: dict) -> float:
+    """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）：
+    历史出过金狗(ath_mc)显著加分；连环发币(open_count)/删推广推文/已清仓本币减分；社区接管(CTO)淡化 dev 风险。"""
+    if not dp:
+        return 0.5                                      # 查不到 → 中性，不偏袒也不冤杀
+    track = _clamp((math.log10(max(1.0, dp.get("ath_mc", 0.0))) - 5.0) / 2.0)  # 历史最佳 $100k→0, $10M→1
+    s = 0.35 + 0.55 * track
+    oc = dp.get("open_count", 0)
+    if oc > 50:                                         # 连环发币/工厂号风险（线性到 300 封顶）
+        s -= 0.30 * _clamp((oc - 50) / 250.0)
+    if dp.get("del_post_count", 0) > 0:                 # 删除推广推文 → 诈骗惯犯，重罚
+        s -= 0.30
+    if dp.get("exited"):                                # dev 已清仓本币 → 利益不对齐，轻罚
+        s -= 0.15
+    if dp.get("cto"):                                   # 社区接管 → dev 风险淡化，托底
+        s = max(s, 0.5)
+    return round(_clamp(s), 3)
+
+# dev 历史按 (chain, address) 缓存：dev 数据变化慢，TTL 内跨轮/多 tab 复用，避免每轮重拉烧配额。
+_DEV_CACHE: dict = {}
+def get_dev_profile(g: GMGNAdapter, chain: str, addr: str) -> dict | None:
+    key = (chain, addr)
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    hit = _DEV_CACHE.get(key)
+    if hit and now - hit[0] < CFG["dev_info_ttl_s"]:
+        return hit[1]
+    try:
+        dp = g.dev_info(addr)
+    except Exception:
+        return None                                     # 查不到 → 本轮按中性处理，不缓存失败、不阻断
+    _DEV_CACHE[key] = (now, dp)
+    return dp
 
 # ──────────────────────────────────────────────────────────────────────────
 # 6. LLM 判断（只对幸存者；占位启发式，标注真实接入点）
@@ -762,14 +849,21 @@ def screen_once(chain: str) -> dict:
             continue
         survivors.append(f)
 
-    # STEP 4 评分排序（ML 占位）：先给个临时拥挤度估计用于打分，再按分数排序砍到 llm_max
-    scored = []
-    for f in survivors:
-        tmp_crowd = "late" if f.chg_1h >= 2.0 else "early"
-        scored.append((priority_score(f, 0.8, tmp_crowd), f))
+    # STEP 4a 初排（无 dev）：先给个临时拥挤度估计用于打分，按动能分排序
+    def _crowd(f): return "late" if f.chg_1h >= 2.0 else "early"
+    scored = [(priority_score(f, 0.8, _crowd(f)), f) for f in survivors]
     scored.sort(key=lambda x: -x[0])
-    to_llm = scored[:CFG["llm_max"]]
-    for sc, f in scored[CFG["llm_max"]:]:
+    # STEP 4b dev 评估维度：只对排序靠前的 dev_pool_n 个额外查 dev 历史（带 TTL 缓存），
+    # 算 dev 子分折进 priority_score 重排——dev 好的上浮、连环发币/删推/已清仓的下沉。
+    pool = scored[:CFG["dev_pool_n"]]
+    for _, f in pool:
+        f.dev = get_dev_profile(g, chain, f.address)
+        f.dev_eval = dev_score(f.dev)
+    pool = [(priority_score(f, 0.8, _crowd(f), f.dev_eval), f) for _, f in pool]
+    pool.sort(key=lambda x: -x[0])
+    ranked = pool + scored[CFG["dev_pool_n"]:]          # dev 重排的头部在前，池外按初排分续后
+    to_llm = ranked[:CFG["llm_max"]]
+    for sc, f in ranked[CFG["llm_max"]:]:
         decisions.append(_reject(f, "REJECT 排序：优先级低于本轮 LLM 名额", 3, None))
 
     # STEP 5 LLM 只对幸存者解释；STEP 6 仓位由代码算；产出候选（不执行）
@@ -786,7 +880,7 @@ def screen_once(chain: str) -> dict:
         size = position_size()
         # 组合风控不在此阻断，只标 risk_warn（人在环：提示而非硬拦）
         allow, rnote = ST.risk.gate(size, n_pos, exposure)
-        pri = priority_score(f, v.conviction, v.crowdedness)
+        pri = priority_score(f, v.conviction, v.crowdedness, f.dev_eval)
         decisions.append(dict(
             decision=dict(symbol=f.symbol_safe, address=f.address, action="ACTION",
                           reason="通过全部闸门 · 待决策", size_sol=size, risk_warn=(not allow),
@@ -835,7 +929,13 @@ def _feat(f):
                 smart_degen=f.smart_degen, renowned=f.renowned, sm_confluence=f.sm_confluence,
                 sniper_count=f.sniper_count, chg_1h=round(f.chg_1h, 3), chg_5m=round(f.chg_5m, 3),
                 buy_ratio=round(f.buy_ratio, 2), turnover=round(f.turnover, 2),
-                liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1))
+                liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1),
+                # dev 评估维度（仅查过 dev 历史的幸存者非空）
+                dev_score=(round(f.dev_eval, 2) if f.dev_eval is not None else None),
+                dev_open_count=(f.dev.get("open_count") if f.dev else None),
+                dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
+                dev_exited=(f.dev.get("exited") if f.dev else None),
+                dev_del_post=(f.dev.get("del_post_count") if f.dev else None))
 
 def _portfolio():
     return dict(open_positions=len(ST.positions), max_concurrent=CFG["max_concurrent_positions"],
