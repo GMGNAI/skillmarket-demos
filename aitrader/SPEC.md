@@ -55,7 +55,15 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
 
 **排序 = 趋势动能模型**（用户选定的选币目标，见 `CFG["rank_weights"]`）：
 - `priority_score` = 加权(5m 动能·30 + 1h 动能·12 + 买卖比·18 + 换手·12 + 共识·12 + 安全筹码·10 + **dev 评估·12**)，各子分归一化；1h 阴跌则整体 ×0.4 沉底。
-- **dev 评估维度**（`dev_score`，纯代码 0..1 加分项；只用口径稳定信号，对齐「口径稳定的才用」纪律）：主分=历史最佳币峰值市值 `ath_mc`（dev 有没有做出过金狗）；减分=连环发币 `creator_open_count`>50（工厂号风险）、已清仓本币 `creator_token_status`+balance（利益不对齐）；`cto_flag`（社区接管）小幅正向。`twitter_del_post_token_count` 真实值普遍是大噪声数、口径不稳 → **不计分**，仅在 `_feat` 暴露备查。数据来自 `token info` 的 `dev` 对象——**只对初排靠前的 `dev_pool_n`(24) 个幸存者额外调 cli**，结果按地址缓存 `dev_info_ttl_s`(600s)、跨轮复用不重拉。查不到→中性 0.5，不冤杀不阻断。
+- **dev 评估维度**（`dev_score`，纯代码 0..1 加分项；命中率/存活率思维，借鉴「dev 信誉分」设计）：
+  - **历史战绩 track**：史上最佳币峰值市值 `ath_mc`，但**按发币量打折**——一次金狗摊到上百次发币=命中率极低、含金量低（重度连环发币把战绩打到 3 折）。
+  - **连环发币 serial**：`creator_open_count`（20 次内算正常，200 次满）越高越像批量发币工厂，直接扣分 + 折掉战绩。
+  - **换皮重发 reskin**：`twitter_name_change_history`（反复改身份）+ `image_dup_count`（复用同图）→ 连环换皮诈骗（对应 demo 的「换皮重发」；正常币 name_changes≤2/image_dup≤1 不误伤）。
+  - **已清仓本币 exited**：`creator_token_status`+balance；连环发币者已清仓=预置倾销，随 serial 叠加更重。
+  - `cto_flag`（社区接管）小幅正向；`twitter_del_post_token_count` 口径不稳 → 不计分（仅 `_feat` 暴露）。
+  - ⚠️ **数据缺口**：demo 的招牌信号 **rug 次数/率、存活数** gmgn-cli **不直接给**（需逐个枚举该 dev 历史币判 rug、爆 cli 预算），故用上述「连环发币+换皮+已清仓+战绩打折」作代理。
+  - 数据来自 `token info` 的 `dev` 对象——**只对初排靠前的 `dev_pool_n`(24) 个幸存者额外调 cli**，结果按地址缓存 `dev_info_ttl_s`(600s)、跨轮复用不重拉。查不到→中性 0.5，不冤杀不阻断。
+  - 真实反例校准：LMAO!（124 发币·改名 10·复用图 11·已清仓·4 分钟 rug）旧算法误判 0.73 优质 → v2 修正为 0.12 弱+换皮检出。但 dev 是**排序子分无一票否决**：它让此类币降分+前端红色警告，**不拦买**（4 分钟 rug 是抽池实时事件，归逃生监控/gate1 管，不是声誉分该拦的）。
 - `LLMJudge`（启发式占位，仍是动能逻辑）：**金狗 vs 接盘**靠买占比区分——
   1h&5m 双跌 → reject(阴跌)；买占比 < `buy_ratio_reject`(0.42) → reject(卖压主导/接盘位)；
   买占比 ≥ `buy_ratio_pass`(0.50) 且 5m 未走弱 → pass(暴涨/late 也跟金狗)；`late`(1h≥300%)仅高位风险标签，不再一票否决。
@@ -289,7 +297,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 **本会话已完成（真实数据 · 只读行情 · 买入做假 · 动能策略 · 多链 · 可演示托管）**
 - gmgn-cli 1.3.9 适配 + `build_from_row`（零额外 cli）+ 真实字段判据（见 §6）。
 - **排序改趋势动能模型** + **LLMJudge 金狗/接盘逻辑**（见 §4）：暴涨不一刀切，买占比区分跟/砍。
-- **新增 dev 评估维度**（见 §4）：`token info` 的 `dev` 对象 → `dev_score`（历史金狗加分 / 连环发币·已清仓减分）作排序子分，折进 `priority_score`；两段排序（初排→只对前 24 个查 dev 历史→重排），结果按地址 600s 缓存省配额；Mock 同构合成、无 key 可跑。**前端新增 `DEV史` 列**（优质/中性/弱 + 0~100 分，hover 出历史最佳市值/发币次数/是否清仓 + 展开详情 + DEMO 假数据齐备）。
+- **新增 dev 评估维度**（见 §4）：`token info` 的 `dev` 对象 → `dev_score`（命中率思维：史上最佳按发币量打折 + 连环发币/换皮重发/已清仓减分）作排序子分，折进 `priority_score`；两段排序（初排→只对前 24 个查 dev 历史→重排），结果按地址 600s 缓存省配额；Mock 同构合成、无 key 可跑。**前端新增 `DEV史` 列**（优质/中性/弱 + 0~100 分 + 换皮重发红标，hover 出历史最佳市值/发币次数/是否清仓/换皮 + 展开详情 + DEMO 假数据齐备）。按真实 rug 反例（LMAO! 4 分钟 rug）校准：v2 将其从 0.73 优质修正为 0.12 弱+换皮检出。
 - **持仓真实价格涨跌**（entry_price/cur_price/pnl）+ **落盘持久化**（positions.json，reload/重启不丢）+ **按链隔离** + **取消监控**(/api/unmonitor)。
 - **逃生监控修误报**：删 burn_ratio 信号（不可逆+跨源口径），只留 honeypot/renounced_mint/top10。
 - **多链切换**（SOL/BSC/Base/ETH）：**链改为请求维度**（无全局当前链）——按链缓存 adapter + 按链 trending 短缓存(3s，同链多 tab 共享一次 cli)；前端每 tab 用 sessionStorage 各自持链，N tab 各看各链互不干扰；后台 tab 暂停轮询省配额。按链记忆命令(ST.trending_cmds)、买入单位/数量按链。
@@ -315,7 +323,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 ## 12. 关键数据结构（实现参考）
 
 - `TokenFeatures`（dataclass）：由 `build_from_row` 从 trending 行建。含 `symbol_safe`；动能 `chg_1h/chg_5m/buys/sells/buy_ratio/turnover/liquidity`；安全 `honeypot/renounced_mint/renounced_freeze/burn_ratio/buy_tax/sell_tax/rug_ratio`；筹码 `bundler/dev_hold/top10`；共识 `smart_degen/renowned/sniper_count/sm_confluence(=degen+renowned)`；dev 评估 `dev`(归一化 dev 历史 dict, `_dev_from_info`)+`dev_eval`(dev 子分 0..1, 初排时为 None)。（已删旧字段 `sec_score/lp_burned/sm_verified/sm_distributing/chg_since_sm`。）
-- `dev`（DevProfile dict）：`open_count`(creator_open_count 历史发币数)、`status`/`balance`(creator_token_status/balance)、`exited`(已清仓本币)、`ath_mc`(历史最佳币峰值市值)、`del_post_count`(删推广推文数)、`create_count`、`cto`。Live 取自 `token info` 的 `dev` 对象，Mock 同构合成。
+- `dev`（DevProfile dict）：`open_count`(creator_open_count 历史发币数)、`status`/`balance`(creator_token_status/balance)、`exited`(已清仓本币)、`ath_mc`(历史最佳币峰值市值)、`name_changes`(twitter_name_change_history 改名次数)、`image_dup`(image_dup_count 复用同图币数)、`del_post_count`(删推广推文数)、`create_count`、`cto`。Live 取自 `token info` 的 `dev` 对象，Mock 同构合成。`_dev_reskin(dp)` 由 `name_changes`/`image_dup` 算换皮重发强度(0..1)。
 - `LLMVerdict`：`verdict(pass/watch/reject)`、`conviction(0..1)`、`crowdedness(early/crowded/late/fading/distributing)`、`red_flags`、`thesis`。
 - 持仓 position：`{symbol,address,chain,size_sol,pnl,cycles,entry_price,cur_price,entry{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}}`。`entry` 是建仓安全快照(`assess_escape` 做 diff，但已不再用 burn_ratio diff)；落盘到 `outputs/positions.json`。
 - 适配器归一化 `token_security` / `_sec_from_row`：`{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}`，Live 与 Mock 与 trending 行三者口径需一致（burn_ratio 是已知不一致点，故逃生不用它）。

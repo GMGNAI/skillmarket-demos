@@ -132,6 +132,7 @@ td{padding:5px 10px;vertical-align:middle}
 .xbtn{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--dim2);cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;flex-shrink:0;transition:.12s}
 .xbtn:hover{border-color:var(--clay);color:var(--clay)}
 .inj{display:inline-flex;align-items:center;gap:3px;color:var(--amber);font-size:8px;font-weight:600;margin-left:5px;border:1px solid #f0a93b44;background:#f0a93b14;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
+.reskin{display:inline-flex;align-items:center;color:var(--clay);font-size:8px;font-weight:600;margin-left:4px;border:1px solid var(--clay);background:#c8503714;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
 .gates{display:flex;gap:4px}
 .pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
 .pip svg{width:11px;height:11px}
@@ -458,8 +459,9 @@ const I18N={
     llm_none_tip:'LLM 阶段　|　未进入 LLM（更早的闸门已筛掉）',
     smc_tip:(degen,kol,smc)=>`聪明钱/KOL　|　${degen} 个聪明钱(smart_degen) / ${kol} 个知名KOL(renowned)，合计 ${smc}`,
     dev_good:'优质', dev_mid:'中性', dev_weak:'弱',
+    reskin_tag:'换皮', reskin_tip:'换皮重发：该 dev 反复改身份 / 复用同一张图连环发新币（连环换皮诈骗惯用）',
     devhist_none:'DEV 历史评估　|　未评估（仅对排序靠前的少数幸存者查 dev 历史；本币止步前关或不在评估池）',
-    devhist_tip:(score,open,ath,exited)=>`DEV 历史评估（排序子分）　|　评分 ${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币（利益不对齐）':'仍持有本币'}\n主分=dev 是否做出过金狗(历史最佳市值)；连环发币/已清仓减分`,
+    devhist_tip:(score,open,ath,exited,reskin)=>`DEV 历史评估（排序子分）　|　评分 ${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n命中率思维：史上最佳按发币量打折；连环发币 / 换皮重发 / 已清仓 减分（gmgn-cli 不给 rug 率/存活数，故用此代理）`,
     vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
     rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
     rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
@@ -477,7 +479,7 @@ const I18N={
     detail_exit:(exit)=>`退出预案：${exit}`,
     detail_died_lab:(gate)=>`阵亡于「${gate}」门`,
     detail_filtered:'已过滤',
-    detail_dev:(score,ath,open,exited)=>`DEV 历史评估：${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币':'仍持有本币'}（作排序子分）`,
+    detail_dev:(score,ath,open,exited,reskin)=>`DEV 历史评估：${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币':'仍持有本币'}${reskin?'　·　换皮重发 ⚠':''}（作排序子分）`,
     detail_no_llm:'未进入 LLM',
     detail_llm_note:(s)=>`LLM 仅对幸存者解释（${s}）；是否成交由你按下。`,
     sev_escape:'逃生信号', sev_high:'高风险', sev_watch:'留意', sev_stable:'平稳',
@@ -610,8 +612,9 @@ const I18N={
     llm_none_tip:'LLM stage　|　did not reach the LLM (cut by an earlier gate)',
     smc_tip:(degen,kol,smc)=>`Smart money/KOL　|　${degen} smart_degen / ${kol} renowned KOL, total ${smc}`,
     dev_good:'GOOD', dev_mid:'OK', dev_weak:'WEAK',
+    reskin_tag:'RESKIN', reskin_tip:'Reskin re-launch: this dev repeatedly changes identity / reuses the same image across new tokens (a serial-scam pattern)',
     devhist_none:'Dev reputation　|　not evaluated (dev history is queried only for the top few survivors; this token was cut earlier or is outside the eval pool)',
-    devhist_tip:(score,open,ath,exited)=>`Dev reputation (ranking sub-score)　|　score ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token (misaligned)':'still holding this token'}\nmain score = has the dev ever made a runner (best prior mcap); serial launching / having exited subtract`,
+    devhist_tip:(score,open,ath,exited,reskin)=>`Dev reputation (ranking sub-score)　|　score ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token':'still holding'}　·　reskin re-launch ${reskin?'detected ⚠':'none ✓'}\nhit-rate thinking: best-ever mcap is discounted by launch count; serial launching / reskin / having exited subtract (gmgn-cli gives no rug-rate/survival, so these are proxies)`,
     vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
     rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
     rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
@@ -629,7 +632,7 @@ const I18N={
     detail_exit:(exit)=>`Exit plan: ${exit}`,
     detail_died_lab:(gate)=>`Eliminated at the “${gate}” gate`,
     detail_filtered:'Filtered out',
-    detail_dev:(score,ath,open,exited)=>`Dev reputation: ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token':'still holding'} (ranking sub-score)`,
+    detail_dev:(score,ath,open,exited,reskin)=>`Dev reputation: ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token':'still holding'}${reskin?'　·　reskin re-launch ⚠':''} (ranking sub-score)`,
     detail_no_llm:'did not reach LLM',
     detail_llm_note:(s)=>`LLM only explains survivors (${s}); you press to trade.`,
     sev_escape:'ESCAPE', sev_high:'High risk', sev_watch:'Watch', sev_stable:'Stable',
@@ -789,7 +792,8 @@ function devCell(t){
   const s=t.devScore, sc=Math.round(s*100);
   const lbl=s>=0.7?t2('dev_good'):s>=0.45?t2('dev_mid'):t2('dev_weak');
   const cls=s>=0.7?'good':s<0.45?'bad':'';
-  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devOpen??'?',fmtMc(t.devAth),t.devExited)}">${lbl} ${sc}</span>`;
+  const reskin=t.devReskin?`<span class="reskin" data-tip="${t2('reskin_tip')}">${t2('reskin_tag')}</span>`:'';
+  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devOpen??'?',fmtMc(t.devAth),t.devExited,t.devReskin)}">${lbl} ${sc}</span>${reskin}`;
 }
 /* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
 function fmtAge(min){
@@ -843,10 +847,10 @@ const COL={ACTION:'var(--lime)',WARN:'var(--amber)',SKIP:'var(--clay)',BLOCK:'va
 /* 与后端 priority_score 同构：共识计数亚线性压缩，无合成安全分 */
 function priCalc(t){const c=Math.min(28,9*Math.log10(1+(t.smc||0)));let s=t.conv*38+c+(1-Math.min(t.top10||0,1))*14+((t.ren)?6:0)+(t.crowd==='early'?10:t.crowd==='late'?-15:0);return Math.max(0,Math.min(99,Math.round(s)));}
 const SEED=[
- {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.85,devOpen:5,devAth:8000000,devExited:false,exitK:'exit_full',thesisK:'th_cleancat'},
- {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'pass',conv:.81,status:'action',size:0.2857,died:null,devScore:.24,devOpen:140,devAth:50000,devExited:false,exitK:'exit_full',thesisK:'th_gooddog'},
+ {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.82,devOpen:5,devAth:8000000,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_cleancat'},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'pass',conv:.81,status:'action',size:0.2857,died:null,devScore:.17,devOpen:140,devAth:50000,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_gooddog'},
  {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,devScore:.20,devOpen:12,devAth:0,devExited:true,exitK:'exit_ladder',thesisK:'th_basepepe'},
- {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'reject',conv:.55,status:'reject',died:4,devScore:.15,devOpen:180,devAth:30000,devExited:false,reasonK:'rs_latemoon'},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'reject',conv:.55,status:'reject',died:4,devScore:.0,devOpen:180,devAth:30000,devExited:false,devReskin:true,reasonK:'rs_latemoon'},
  {sym:'BUNDLED',address:'5sFgUaXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ3yQ',age:33,hp:false,ren:true,bund:.41,dev:.25,top10:.55,smc:8,degen:6,kol:2,crowd:'early',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_bundled'},
  {sym:'RUGPULL',address:'8vR7tWn4bYj6cLwZ3sFgUaXpBn2dMfTqVrJkHx9pQ5mKzR',age:15,hp:true,ren:false,bund:.22,dev:.18,top10:.61,smc:1,degen:1,kol:0,crowd:'crowded',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_rugpull'},
  {sym:'INJECT',inj:true,address:'3aXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ5sFgUwH',age:20,hp:false,ren:true,bund:.09,dev:.05,top10:.33,smc:0,degen:0,kol:0,crowd:'early',v:'-',conv:0,status:'reject',died:2,reasonK:'rs_inject'},
@@ -890,7 +894,7 @@ function normalize(data){
       hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
       bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
       smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
-      devScore:(f.dev_score==null?null:f.dev_score),devOpen:(f.dev_open_count==null?null:f.dev_open_count),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,
+      devScore:(f.dev_score==null?null:f.dev_score),devOpen:(f.dev_open_count==null?null:f.dev_open_count),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
       v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
       warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
       reason:dec.reason,address:dec.address,
@@ -1005,7 +1009,7 @@ function renderDetail(){
   const r=(sel>=0?T[sel]:null); if(!r){document.getElementById('detail').innerHTML='';return;}
   let right;
   if(r.status==='action'){
-    const devLine=(r.devScore==null)?'':`<div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_dev',Math.round(r.devScore*100),fmtMc(r.devAth),r.devOpen??'?',r.devExited)}</div>`;
+    const devLine=(r.devScore==null)?'':`<div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_dev',Math.round(r.devScore*100),fmtMc(r.devAth),r.devOpen??'?',r.devExited,r.devReskin)}</div>`;
     right=`<div class="lab">${t('detail_passed',r.pri,r.size,r.warn)}</div>
       <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>${devLine}`;
   }else{

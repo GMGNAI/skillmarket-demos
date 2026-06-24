@@ -325,7 +325,7 @@ class MockGMGN(GMGNAdapter):
                 buy_tax=0.0, sell_tax=0.0, rug=0.0, bundler=0.05, dev=0.03, top10=0.25,
                 degen=0, renowned=0, sniper=0, age_min=45,
                 dev_open=6, dev_status="creator_hold", dev_bal=1.0, dev_ath_mc=0.0,
-                dev_delpost=0, dev_cto=0):
+                dev_delpost=0, dev_cto=0, dev_names=0, dev_imgdup=0):
             if chg5m is None:
                 chg5m = round(chg1h * 0.3, 2)   # 默认 5m 与 1h 同向
             return dict(symbol=symbol, price=price, market_cap=mcap, volume=vol,
@@ -337,7 +337,8 @@ class MockGMGN(GMGNAdapter):
                         renowned_count=renowned, sniper_count=sniper, age_min=age_min,
                         # dev 评估维度（与真实 token info 的 dev 对象同构）
                         dev_open_count=dev_open, dev_token_status=dev_status, dev_token_balance=dev_bal,
-                        dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto)
+                        dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto,
+                        dev_names=dev_names, dev_imgdup=dev_imgdup)
         return {
             # 干净 + 强共识 → 高优先级 ACTION
             "CLEANCATxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
@@ -355,7 +356,7 @@ class MockGMGN(GMGNAdapter):
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
                 tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
-                    dev_open=180, dev_ath_mc=30_000),   # 连环发币 180 次、无像样战绩 → dev 子分低
+                    dev_open=180, dev_ath_mc=30_000, dev_names=10, dev_imgdup=8),   # 连环发币180+换皮重发(改名10/复用图8) → dev 子分极低
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
                 tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
@@ -405,7 +406,8 @@ class MockGMGN(GMGNAdapter):
             open_count=d["dev_open_count"], status=status, balance=bal,
             exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
             ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
-            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]))
+            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]),
+            name_changes=d["dev_names"], image_dup=d["dev_imgdup"])
 
     def token_holders(self, addr):
         d = self.db[addr]
@@ -460,11 +462,14 @@ def _b(v) -> bool:
 def _dev_from_info(info: dict) -> dict:
     """从 token info 的 dev 对象归一化出 dev 评估所需字段（Live/Mock 同构）。
     creator_open_count=dev 历史发币总数；ath_token_info.ath_mc=历史最佳币峰值市值；
-    creator_token_status/balance=是否已清仓本币；twitter_del_post_token_count=删推广推文（诈骗信号）。"""
+    creator_token_status/balance=是否已清仓本币；
+    twitter_name_change_history=dev 改名/换身份历史、image_dup_count=复用同图币数 → 换皮重发信号。
+    ⚠️ gmgn-cli 不直接给 rug 次数/存活数（需逐币枚举判 rug、爆 cli 预算），故用连环发币+换皮+已清仓作代理。"""
     dev = (info or {}).get("dev") or {}
     ath = dev.get("ath_token_info") or {}
     status = str(dev.get("creator_token_status") or "")
     bal = _f(dev.get("creator_token_balance"))
+    name_hist = dev.get("twitter_name_change_history")
     return dict(
         open_count=int(_f(dev.get("creator_open_count"))),
         status=status, balance=bal,
@@ -473,7 +478,17 @@ def _dev_from_info(info: dict) -> dict:
         del_post_count=int(_f(dev.get("twitter_del_post_token_count"))),
         create_count=int(_f(dev.get("twitter_create_token_count"))),
         cto=bool(_b(dev.get("cto_flag"))),
+        name_changes=len(name_hist) if isinstance(name_hist, list) else 0,
+        image_dup=int(_f((info or {}).get("image_dup_count"))),
     )
+
+def _dev_reskin(dp: dict) -> float:
+    """换皮重发强度 0..1：反复改推特身份(name_changes) 或 复用同一张图(image_dup) → 连环换皮诈骗。
+    正常币 name_changes≤2 / image_dup≤1 → 0（不误伤）。"""
+    if not dp:
+        return 0.0
+    return _clamp(max((dp.get("name_changes", 0) - 2) / 8.0,
+                      (dp.get("image_dup", 0) - 1) / 9.0))
 
 @dataclass
 class TokenFeatures:
@@ -586,20 +601,26 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None 
 
 def dev_score(dp: dict) -> float:
     """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）。
-    只用口径稳定的信号（对齐 SPEC「口径稳定的才用」纪律）：
-      主分=历史最佳币峰值市值 ath_mc（dev 有没有做出过金狗）；
-      减分=连环发币 open_count（工厂号/批量发币风险）、已清仓本币 exited（利益不对齐）；
-      cto（社区接管）小幅正向。del_post_count 口径不稳（真实值普遍是大噪声数）→ 不计分，仅 _feat 暴露备查。"""
+    设计借鉴「dev 信誉分」demo（命中率/存活率思维），但 gmgn-cli 不给 rug 次数/存活数，故用可得信号近似：
+      • 历史战绩 track：史上最佳币峰值市值 ath_mc，**按发币量打折**——一次金狗摊到上百次发币=命中率极低、含金量低；
+      • 连环发币 serial：open_count 越高越像批量发币工厂，直接扣分 + 折掉战绩；
+      • 换皮重发 reskin：反复改身份 / 复用同图 → 连环换皮诈骗，扣分（对应 demo 的「换皮重发」）；
+      • 已清仓本币 exited：利益不对齐；连环发币者已清仓=预置倾销，叠加更重；
+      • cto（社区接管）小幅正向。
+    del_post_count 口径不稳 → 不计分（仅 _feat 暴露备查）。"""
     if not dp:
         return 0.5                                      # 查不到 → 中性，不偏袒也不冤杀
-    track = _clamp((math.log10(max(1.0, dp.get("ath_mc", 0.0))) - 5.0) / 2.0)  # 历史最佳 $100k→0, $10M→1
-    s = 0.30 + 0.60 * track
     oc = dp.get("open_count", 0)
-    if oc > 50:                                         # 连环发币/工厂号风险（线性到 300 封顶）
-        s -= 0.25 * _clamp((oc - 50) / 250.0)
-    if dp.get("exited"):                                # dev 已清仓本币 → 利益不对齐，轻罚
-        s -= 0.10
-    if dp.get("cto"):                                   # 社区接管 → dev 跑路风险被淡化，小幅正向（不硬托底压平维度）
+    serial = _clamp((oc - 20) / 180.0)                  # 20 次内算正常，200 次→满（连环发币强度）
+    # 历史战绩按发币量打折：重度连环发币把「史上最佳」打到 3 折（一次撞大运 ≠ 优质 dev）
+    track = _clamp((math.log10(max(1.0, dp.get("ath_mc", 0.0))) - 5.0) / 2.0)   # $100k→0, $10M→1
+    track_adj = track * (1 - 0.7 * serial)
+    s = 0.30 + 0.55 * track_adj
+    s -= 0.20 * serial                                  # 连环发币本身再直接扣
+    s -= 0.20 * _dev_reskin(dp)                         # 换皮重发扣分
+    if dp.get("exited"):                                # 已清仓本币：连环发币者已清仓=预置倾销，随 serial 叠加更重
+        s -= 0.10 + 0.15 * serial
+    if dp.get("cto"):                                   # 社区接管 → dev 跑路风险被淡化，小幅正向
         s += 0.05
     return round(_clamp(s), 3)
 
@@ -936,7 +957,10 @@ def _feat(f):
                 dev_open_count=(f.dev.get("open_count") if f.dev else None),
                 dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
                 dev_exited=(f.dev.get("exited") if f.dev else None),
-                dev_del_post=(f.dev.get("del_post_count") if f.dev else None))
+                dev_del_post=(f.dev.get("del_post_count") if f.dev else None),
+                dev_name_changes=(f.dev.get("name_changes") if f.dev else None),
+                dev_image_dup=(f.dev.get("image_dup") if f.dev else None),
+                dev_reskin=(_dev_reskin(f.dev) >= 0.25 if f.dev else None))
 
 def _portfolio():
     return dict(open_positions=len(ST.positions), max_concurrent=CFG["max_concurrent_positions"],
