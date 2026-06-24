@@ -453,8 +453,7 @@ class MockGMGN(GMGNAdapter):
             creator="MOCKDEV" + addr[:8], open_count=d["dev_open_count"], status=status, balance=bal,
             exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
             ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
-            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]),
-            image_dup=d["dev_imgdup"])
+            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]))
         # 合成发币历史 tokens 数组（让 _merge_created 能逐币分类出存活/rug，与 Live 同构）
         n = d["dev_open_count"]; m = min(max(n, 1), 40); alive_n = round(m * d["dev_surv"])
         toks = [dict(token_address=f"{addr[:6]}MT{i}", chain="sol",
@@ -463,6 +462,7 @@ class MockGMGN(GMGNAdapter):
         _merge_created(dp, dict(open_count=n, inner_count=d["dev_inner"],
                                 open_ratio=d["dev_surv"],
                                 creator_ath_info={"ath_mc": d["dev_ath_mc"]}, tokens=toks))
+        dp["own_img_reuse"] = d["dev_imgdup"]   # Mock：dev_imgdup 即"该 dev 自己复用 logo 的次数"
         # 安全扫描结果（Mock 直接合成：dev_badsec 个最近币不安全）
         dp.pop("_recent", None)
         bad = d["dev_badsec"]; chk = min(CFG["dev_sec_scan_n"], max(1, n))
@@ -524,8 +524,9 @@ def _b(v) -> bool:
 def _dev_from_info(info: dict) -> dict:
     """从 token info 的 dev 对象归一化出 dev 评估所需字段（Live/Mock 同构）。
     creator_open_count=dev 历史发币总数；ath_token_info.ath_mc=历史最佳币峰值市值；
-    creator_token_status/balance=是否已清仓本币；image_dup_count=复用同图币数 → 换皮重发信号。
-    ⚠️ 不用 twitter_name_change_history：代币的推特号是项目方随意填的概念关联、非验证过的 dev 身份，拿它判"换皮"会误伤。"""
+    creator_token_status/balance=是否已清仓本币。
+    ⚠️ 换皮重发不在这里取：改用 created-tokens 里「dev 自己各币的 logo 复用」判（见 _merge_created.own_img_reuse），
+    不用 token info 的全局 image_dup_count（别人盗图会误伤原作者）、也不用 twitter_name_change_history（推特号项目方随填，非 dev 身份）。"""
     dev = (info or {}).get("dev") or {}
     ath = dev.get("ath_token_info") or {}
     status = str(dev.get("creator_token_status") or "")
@@ -539,7 +540,6 @@ def _dev_from_info(info: dict) -> dict:
         del_post_count=int(_f(dev.get("twitter_del_post_token_count"))),
         create_count=int(_f(dev.get("twitter_create_token_count"))),
         cto=bool(_b(dev.get("cto_flag"))),
-        image_dup=int(_f((info or {}).get("image_dup_count"))),
     )
 
 def _merge_created(dp: dict, ct: dict):
@@ -565,16 +565,21 @@ def _merge_created(dp: dict, ct: dict):
     dp["alive"] = alive
     dp["rugged"] = max(0, total - alive)
     dp["rug_rate"] = round((total - alive) / total, 3) if total else 0.0
+    # 换皮重发：只看「这个 dev 自己发的币」里有没有复用同一张 logo（排除别人盗图——盗图会抬高全局
+    # image_dup_count、误伤只发过 1 个币的原作者）。own_img_reuse = 自己发的币数 - 不同 logo 数 = 自重发次数。
+    logos = [t.get("logo") for t in toks if t.get("logo")]
+    dp["own_img_reuse"] = max(0, len(logos) - len(set(logos)))
     # 最近 N 个币的地址（按发币时间倒序）→ 供逐币安全扫描
     recent = sorted(toks, key=lambda t: -_f(t.get("create_timestamp")))[:CFG["dev_sec_scan_n"]]
     dp["_recent"] = [t.get("token_address") for t in recent if t.get("token_address")]
 
 def _dev_reskin(dp: dict) -> float:
-    """换皮重发强度 0..1：dev 复用同一张图连环发新币（image_dup_count）= 同套路反复重发。
-    正常币 image_dup≤1 → 0（不误伤）。不用推特改名信号（推特号项目方随填，非 dev 身份）。"""
+    """换皮重发强度 0..1：只看「这个 dev 自己发的币」复用同一张 logo 的次数（own_img_reuse）。
+    ⚠️ 不用全局 image_dup_count——别人盗图发新币会抬高全局计数、误伤只发过 1 个币的原作者（用户指正）。
+    自重发 1 次容忍，2 次起算、5 次满。不用推特改名信号（推特号项目方随填，非 dev 身份）。"""
     if not dp:
         return 0.0
-    return _clamp((dp.get("image_dup", 0) - 1) / 9.0)
+    return _clamp((dp.get("own_img_reuse", 0) - 1) / 4.0)
 
 def _security_unsafe(sec: dict, chain: str) -> str | None:
     """判一个币的 token security 是否不安全，返回风险标签（中文短语）或 None。按链区分判据：
@@ -1102,7 +1107,7 @@ def _feat(f):
                 dev_sec_risks=(f.dev.get("sec_risks") if f.dev else None),      # 风险标签
                 dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
                 dev_exited=(f.dev.get("exited") if f.dev else None),
-                dev_image_dup=(f.dev.get("image_dup") if f.dev else None),
+                dev_own_reuse=(f.dev.get("own_img_reuse") if f.dev else None),   # dev 自己复用 logo 次数
                 dev_reskin=(_dev_reskin(f.dev) >= 0.25 if f.dev else None))
 
 def _portfolio():
