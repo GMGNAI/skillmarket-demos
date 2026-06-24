@@ -133,21 +133,21 @@ td{padding:5px 10px;vertical-align:middle}
 .xbtn:hover{border-color:var(--clay);color:var(--clay)}
 .inj{display:inline-flex;align-items:center;gap:3px;color:var(--amber);font-size:8px;font-weight:600;margin-left:5px;border:1px solid #f0a93b44;background:#f0a93b14;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
 .reskin{display:inline-flex;align-items:center;color:var(--clay);font-size:8px;font-weight:600;margin-left:4px;border:1px solid var(--clay);background:#c8503714;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
-.devcard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#ffffff05}
-.devcard.good{border-color:#a3e63544;background:#a3e63510}.devcard.mid{border-color:#f0a93b44;background:#f0a93b0d}.devcard.bad{border-color:#c8503755;background:#c8503712}
-.devcard .dctop{display:flex;align-items:baseline;gap:10px}
-.devcard .dclbl{color:var(--dim);font-size:10px;letter-spacing:.08em}
-.devcard .dcscore{font-size:26px;font-weight:700;line-height:1;color:var(--lime)}
+.devcard{border:1px solid var(--line);border-radius:7px;padding:6px 10px;margin-bottom:7px;background:#ffffff05}
+.devcard.good{border-color:#a3e63540;background:#a3e6350d}.devcard.mid{border-color:#f0a93b40;background:#f0a93b0a}.devcard.bad{border-color:#c8503750;background:#c8503710}
+.devcard .dctop{display:flex;align-items:baseline;gap:6px}
+.devcard .dcscore{font-size:17px;font-weight:700;line-height:1;color:var(--lime)}
 .devcard.mid .dcscore{color:var(--amber)}.devcard.bad .dcscore{color:var(--clay)}
-.devcard .dcscore small{font-size:11px;font-weight:400;color:var(--dim2)}
-.devcard .dctrust{margin-left:auto;font-size:11px;font-weight:600;color:var(--lime)}
+.devcard .dcscore small{font-size:9px;font-weight:400;color:var(--dim2)}
+.devcard .dclbl{color:var(--dim);font-size:9px;letter-spacing:.05em}
+.devcard .dctrust{margin-left:auto;font-size:10px;font-weight:600;color:var(--lime)}
 .devcard.bad .dctrust{color:var(--clay)}.devcard.mid .dctrust{color:var(--amber)}
-.devcard .dcgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px}
-.devcard .dccell{display:flex;flex-direction:column;gap:2px}
-.devcard .dck{color:var(--dim2);font-size:9px;letter-spacing:.05em}
-.devcard .dcv{font-size:12px;font-weight:600}.devcard .dcv.good{color:var(--lime)}.devcard .dcv.bad{color:var(--clay)}
-.devcard .dcinner{color:var(--clay);font-size:9px;font-weight:500;cursor:help}
-.devcard .dcrisk{margin-top:8px;padding-top:7px;border-top:1px solid var(--line);color:var(--clay);font-size:10px;font-weight:600}
+.devcard .dcstats{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:5px;font-size:11px;font-weight:600}
+.devcard .dcstats i{font-style:normal;color:var(--dim2);font-weight:400;margin-right:4px;font-size:9px;letter-spacing:.03em}
+.devcard .dcstats em{font-style:normal;color:var(--dim);font-weight:400}
+.devcard .dcstats .bad{color:var(--clay)}.devcard .dcstats .good{color:var(--lime)}
+.devcard .dcinner{color:var(--clay);font-size:9px;font-weight:500;cursor:help;margin-left:4px}
+.devcard .dcrisk{margin-top:5px;padding-top:5px;border-top:1px solid var(--line);color:var(--clay);font-size:10px;font-weight:600}
 .gates{display:flex;gap:4px}
 .pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
 .pip svg{width:11px;height:11px}
@@ -324,7 +324,7 @@ td{padding:5px 10px;vertical-align:middle}
         <div class="body">
           <table>
             <thead><tr>
-              <th><span data-i18n="th_token">TOKEN</span> <span class="tokf" id="tokFilter"></span></th><th data-i18n="th_pipe">规则→排序→LLM</th><th data-i18n="th_safe">安全</th><th>BUND%</th><th>DEV%</th><th>T10%</th><th data-i18n="th_smart">聪明钱/KOL</th><th data-i18n="th_devhist">DEV史</th><th data-i18n="th_timing">时机</th><th>LLM</th><th data-i18n="th_pri">优先级</th><th data-i18n="th_dec">决策</th>
+              <th><span data-i18n="th_token">TOKEN</span> <span class="tokf" id="tokFilter"></span></th><th data-i18n="th_pipe">规则→排序→LLM</th><th data-i18n="th_safe">安全</th><th data-i18n="th_bund">捆绑</th><th data-i18n="th_dev">DEV</th><th data-i18n="th_t10">前10</th><th data-i18n="th_smart">聪明钱/KOL</th><th data-i18n="th_devhist">DEV史</th><th data-i18n="th_timing">时机</th><th>LLM</th><th data-i18n="th_pri">优先级</th><th data-i18n="th_dec">决策</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -424,7 +424,7 @@ const I18N={
     amt_title:'买入数量（原生代币），改这里下面所有买入按钮同步',
     amt_lbl:'买入',
     pipegear_title:'热榜命令 / 轮询间隔',
-    th_token:'TOKEN', th_pipe:'规则→排序→LLM', th_safe:'安全', th_smart:'聪明钱/KOL', th_devhist:'DEV评分', th_timing:'时机', th_pri:'优先级', th_dec:'决策',
+    th_token:'TOKEN', th_pipe:'规则→排序→LLM', th_safe:'安全', th_bund:'捆绑', th_dev:'DEV', th_t10:'前10', th_smart:'聪明钱/KOL', th_devhist:'DEV评分', th_timing:'时机', th_pri:'优先级', th_dec:'决策',
     log_h3:'实时决策日志 · trade_decisions.jsonl',
     logtog_title:'展开 / 收起',
     esc_h3:'持仓逃生监控',
@@ -584,7 +584,7 @@ const I18N={
     amt_title:'Buy amount (native token); changing it syncs every buy button below',
     amt_lbl:'BUY',
     pipegear_title:'Trending command / poll interval',
-    th_token:'TOKEN', th_pipe:'RULE→RANK→LLM', th_safe:'SAFE', th_smart:'SMART/KOL', th_devhist:'DEV Score', th_timing:'TIMING', th_pri:'PRIORITY', th_dec:'DECISION',
+    th_token:'TOKEN', th_pipe:'RULE→RANK→LLM', th_safe:'SAFE', th_bund:'BUND', th_dev:'DEV', th_t10:'T10', th_smart:'SMART/KOL', th_devhist:'DEV Score', th_timing:'TIMING', th_pri:'PRIORITY', th_dec:'DECISION',
     log_h3:'Live Decision Log · trade_decisions.jsonl',
     logtog_title:'Expand / collapse',
     esc_h3:'Position Escape Monitor',
@@ -832,17 +832,17 @@ function devCard(r){
   const cls=r.devScore>=0.7?'good':r.devScore<0.45?'bad':'mid';
   const trust=r.devScore>=0.45?t('dev_trust'):t('dev_distrust');
   const launches=r.devLaunches??'?';
-  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` (${Math.round(r.devRugRate*100)}%)`;
-  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner has-tip" data-tip="${t('dev_inner_tip')}">+${r.devInner} ${t('dev_k_inner')}</span>`:'';
+  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` <em>(${Math.round(r.devRugRate*100)}%)</em>`;
+  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner has-tip" data-tip="${t('dev_inner_tip')}">+${r.devInner}</span>`:'';
   // 安全扫描风险行（仅在最近发币里检出不安全时显示）
   const sec=(r.devSecUnsafe>0)?`<div class="dcrisk">${t('dev_sec_warn',r.devSecUnsafe,r.devSecChecked,(r.devSecRisks||[]).join(' · '))}</div>`:'';
   return `<div class="devcard ${cls}">
-    <div class="dctop"><span class="dclbl">${t('dev_rep_label')}</span><span class="dcscore">${sc}<small>/100</small></span><span class="dctrust">${trust}</span></div>
-    <div class="dcgrid">
-      <div class="dccell"><span class="dck">${t('dev_k_launches')}</span><span class="dcv">${launches} ${inner}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_rug')}</span><span class="dcv ${rugN>0?'bad':'good'}">${rugN}${rugPct}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_alive')}</span><span class="dcv">${r.devAlive??'?'}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_reskin')}</span><span class="dcv ${r.devReskin?'bad':'good'}">${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span></div>
+    <div class="dctop"><span class="dcscore">${sc}<small>/100</small></span><span class="dclbl">${t('dev_rep_label')}</span><span class="dctrust">${trust}</span></div>
+    <div class="dcstats">
+      <span><i>${t('dev_k_launches')}</i>${launches}${inner}</span>
+      <span class="${rugN>0?'bad':'good'}"><i>${t('dev_k_rug')}</i>${rugN}${rugPct}</span>
+      <span><i>${t('dev_k_alive')}</i>${r.devAlive??'?'}</span>
+      <span class="${r.devReskin?'bad':'good'}"><i>${t('dev_k_reskin')}</i>${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span>
     </div>${sec}</div>`;
 }
 /* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
