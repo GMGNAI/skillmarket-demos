@@ -341,7 +341,7 @@ class MockGMGN(GMGNAdapter):
                 buy_tax=0.0, sell_tax=0.0, rug=0.0, bundler=0.05, dev=0.03, top10=0.25,
                 degen=0, renowned=0, sniper=0, age_min=45,
                 dev_open=6, dev_status="creator_hold", dev_bal=1.0, dev_ath_mc=0.0,
-                dev_delpost=0, dev_cto=0, dev_names=0, dev_imgdup=0,
+                dev_delpost=0, dev_cto=0, dev_imgdup=0,
                 dev_inner=0, dev_surv=1.0):
             if chg5m is None:
                 chg5m = round(chg1h * 0.3, 2)   # 默认 5m 与 1h 同向
@@ -355,8 +355,7 @@ class MockGMGN(GMGNAdapter):
                         # dev 评估维度（与真实 token info 的 dev 对象同构）
                         dev_open_count=dev_open, dev_token_status=dev_status, dev_token_balance=dev_bal,
                         dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto,
-                        dev_names=dev_names, dev_imgdup=dev_imgdup,
-                        dev_inner=dev_inner, dev_surv=dev_surv)
+                        dev_imgdup=dev_imgdup, dev_inner=dev_inner, dev_surv=dev_surv)
         return {
             # 干净 + 强共识 → 高优先级 ACTION
             "CLEANCATxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
@@ -374,7 +373,7 @@ class MockGMGN(GMGNAdapter):
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
                 tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
-                    dev_open=180, dev_ath_mc=30_000, dev_names=10, dev_imgdup=8, dev_inner=2000, dev_surv=0.01),   # 喷币2000·存活1%·换皮 → 工厂号
+                    dev_open=180, dev_ath_mc=30_000, dev_imgdup=8, dev_inner=2000, dev_surv=0.01),   # 内盘沉底2000·开外盘率1%·复用同图 → 工厂号
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
                 tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
@@ -429,7 +428,7 @@ class MockGMGN(GMGNAdapter):
             exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
             ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
             create_count=d["dev_open_count"], cto=bool(d["dev_cto"]),
-            name_changes=d["dev_names"], image_dup=d["dev_imgdup"])
+            image_dup=d["dev_imgdup"])
         _merge_created(dp, dict(open_count=d["dev_open_count"], inner_count=d["dev_inner"],
                                 open_ratio=d["dev_surv"],
                                 creator_ath_info={"ath_mc": d["dev_ath_mc"]}, tokens=[]))
@@ -488,14 +487,12 @@ def _b(v) -> bool:
 def _dev_from_info(info: dict) -> dict:
     """从 token info 的 dev 对象归一化出 dev 评估所需字段（Live/Mock 同构）。
     creator_open_count=dev 历史发币总数；ath_token_info.ath_mc=历史最佳币峰值市值；
-    creator_token_status/balance=是否已清仓本币；
-    twitter_name_change_history=dev 改名/换身份历史、image_dup_count=复用同图币数 → 换皮重发信号。
-    ⚠️ gmgn-cli 不直接给 rug 次数/存活数（需逐币枚举判 rug、爆 cli 预算），故用连环发币+换皮+已清仓作代理。"""
+    creator_token_status/balance=是否已清仓本币；image_dup_count=复用同图币数 → 换皮重发信号。
+    ⚠️ 不用 twitter_name_change_history：代币的推特号是项目方随意填的概念关联、非验证过的 dev 身份，拿它判"换皮"会误伤。"""
     dev = (info or {}).get("dev") or {}
     ath = dev.get("ath_token_info") or {}
     status = str(dev.get("creator_token_status") or "")
     bal = _f(dev.get("creator_token_balance"))
-    name_hist = dev.get("twitter_name_change_history")
     return dict(
         creator=dev.get("creator_address") or "",
         open_count=int(_f(dev.get("creator_open_count"))),
@@ -505,7 +502,6 @@ def _dev_from_info(info: dict) -> dict:
         del_post_count=int(_f(dev.get("twitter_del_post_token_count"))),
         create_count=int(_f(dev.get("twitter_create_token_count"))),
         cto=bool(_b(dev.get("cto_flag"))),
-        name_changes=len(name_hist) if isinstance(name_hist, list) else 0,
         image_dup=int(_f((info or {}).get("image_dup_count"))),
     )
 
@@ -525,12 +521,11 @@ def _merge_created(dp: dict, ct: dict):
         dp["ath_mc"] = _f(ath)
 
 def _dev_reskin(dp: dict) -> float:
-    """换皮重发强度 0..1：反复改推特身份(name_changes) 或 复用同一张图(image_dup) → 连环换皮诈骗。
-    正常币 name_changes≤2 / image_dup≤1 → 0（不误伤）。"""
+    """换皮重发强度 0..1：dev 复用同一张图连环发新币（image_dup_count）= 同套路反复重发。
+    正常币 image_dup≤1 → 0（不误伤）。不用推特改名信号（推特号项目方随填，非 dev 身份）。"""
     if not dp:
         return 0.0
-    return _clamp(max((dp.get("name_changes", 0) - 2) / 8.0,
-                      (dp.get("image_dup", 0) - 1) / 9.0))
+    return _clamp((dp.get("image_dup", 0) - 1) / 9.0)
 
 @dataclass
 class TokenFeatures:
@@ -1026,7 +1021,6 @@ def _feat(f):
                 dev_survival=(f.dev.get("survival_rate") if f.dev else None),                    # 开外盘率
                 dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
                 dev_exited=(f.dev.get("exited") if f.dev else None),
-                dev_name_changes=(f.dev.get("name_changes") if f.dev else None),
                 dev_image_dup=(f.dev.get("image_dup") if f.dev else None),
                 dev_reskin=(_dev_reskin(f.dev) >= 0.25 if f.dev else None))
 

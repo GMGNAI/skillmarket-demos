@@ -60,7 +60,7 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
   - **主分 = 开外盘率 `survival_rate`(open_ratio)**：dev 历史发的币打满开外盘的比例。100%→优质、~1%→工厂号（这是 demo「存活/rug」的真实来源）。
   - **内盘沉底强罚 `inner_count`**：海量币卡在内盘从没开外盘（动辄上千）= 批量发币工厂（50→0,1000→满 -0.35）。
   - **历史战绩 `ath_mc`** 小幅加分，但**按开外盘率门控**（工厂的一次金狗是撞大运，不计入）。
-  - **换皮重发 reskin**：`twitter_name_change_history`(改身份) + `image_dup_count`(复用图)（对应 demo 的「换皮重发」；正常币 name_changes≤2/image_dup≤1 不误伤）；**已清仓本币 exited** 轻罚；`cto_flag` 小幅正向。
+  - **换皮重发 reskin**：`image_dup_count`(dev 复用同一张图连环发新币 = 同套路反复重发)（对应 demo 的「换皮重发」；正常币 image_dup≤1 不误伤）。⚠️ **不用 `twitter_name_change_history`**：代币的推特号是项目方随意填的概念关联、非验证过的 dev 身份，拿它判换皮会误伤（用户指正）。**已清仓本币 exited** 轻罚；`cto_flag` 小幅正向。
   - **过滤门**：`dev_score < min_dev_score`(0.15) → 直接砍（reason 如「Dev 信誉低（评分 0/100：内盘沉底 10659 · 开外盘率 1% · 换皮重发 · 已清仓本币）」），对应 demo 扫描流里的「⛔ Dev 连环 rug」。⚠️ 这是对原「dev 只排序不避雷」铁律的**有意放宽**（用户要求）：dev 现在能拦下工厂号/连环换皮，不再只是降分。
   - 回退：`created-tokens` 查不到（无 survival_rate）→ 退化用 `open_count`+`ath` 战绩打折，不阻断。
   - 成本：每个评估 dev = `token info` + `created-tokens` 两次 cli，**仅对初排靠前的 `dev_pool_n`(24) 个幸存者**，按地址缓存 `dev_info_ttl_s`(600s) 跨轮复用。
@@ -326,7 +326,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 ## 12. 关键数据结构（实现参考）
 
 - `TokenFeatures`（dataclass）：由 `build_from_row` 从 trending 行建。含 `symbol_safe`；动能 `chg_1h/chg_5m/buys/sells/buy_ratio/turnover/liquidity`；安全 `honeypot/renounced_mint/renounced_freeze/burn_ratio/buy_tax/sell_tax/rug_ratio`；筹码 `bundler/dev_hold/top10`；共识 `smart_degen/renowned/sniper_count/sm_confluence(=degen+renowned)`；dev 评估 `dev`(归一化 dev 历史 dict, `_dev_from_info`)+`dev_eval`(dev 子分 0..1, 初排时为 None)。（已删旧字段 `sec_score/lp_burned/sm_verified/sm_distributing/chg_since_sm`。）
-- `dev`（DevProfile dict）：`creator`(dev 钱包地址)、`launches`(open_count 开外盘/毕业数)、`inner_count`(内盘沉底:卡内盘没开外盘的币数)、`survival_rate`(open_ratio 开外盘率/毕业率)、`ath_mc`(历史最佳币峰值)、`exited`(已清仓本币)、`name_changes`/`image_dup`(换皮信号)、`del_post_count`、`cto`。Live = `token info`(creator/换皮/已清仓) + `portfolio created-tokens`(发币历史/开外盘率，由 `_merge_created` 并入)；Mock 同构合成。`_dev_reskin(dp)` 由 `name_changes`/`image_dup` 算换皮重发强度(0..1)。
+- `dev`（DevProfile dict）：`creator`(dev 钱包地址)、`launches`(open_count 开外盘/毕业数)、`inner_count`(内盘沉底:卡内盘没开外盘的币数)、`survival_rate`(open_ratio 开外盘率/毕业率)、`ath_mc`(历史最佳币峰值)、`exited`(已清仓本币)、`image_dup`(复用同图=换皮信号)、`del_post_count`、`cto`。Live = `token info`(creator/换皮/已清仓) + `portfolio created-tokens`(发币历史/开外盘率，由 `_merge_created` 并入)；Mock 同构合成。`_dev_reskin(dp)` 由 `name_changes`/`image_dup` 算换皮重发强度(0..1)。
 - `LLMVerdict`：`verdict(pass/watch/reject)`、`conviction(0..1)`、`crowdedness(early/crowded/late/fading/distributing)`、`red_flags`、`thesis`。
 - 持仓 position：`{symbol,address,chain,size_sol,pnl,cycles,entry_price,cur_price,entry{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}}`。`entry` 是建仓安全快照(`assess_escape` 做 diff，但已不再用 burn_ratio diff)；落盘到 `outputs/positions.json`。
 - 适配器归一化 `token_security` / `_sec_from_row`：`{honeypot,renounced_mint,renounced_freeze,burn_ratio,top10}`，Live 与 Mock 与 trending 行三者口径需一致（burn_ratio 是已知不一致点，故逃生不用它）。
