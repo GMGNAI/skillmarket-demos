@@ -475,13 +475,13 @@ const I18N={
     dev_good:'优质', dev_mid:'中性', dev_weak:'弱',
     reskin_tag:'换皮', reskin_tip:'换皮重发：该 dev 反复改身份 / 复用同一张图连环发新币（连环换皮诈骗惯用）',
     dev_rep_label:'Dev 信誉分', dev_trust:'可信 ✓', dev_distrust:'不可信 ⛔',
-    dev_k_launches:'历史发币', dev_k_rug:'rug 次数', dev_k_alive:'存活', dev_k_reskin:'换皮重发',
-    dev_reskin_yes:'检出 ⚠', dev_reskin_no:'未检出 ✓', dev_spray:'喷币',
-    dev_inner_tip:'总喷币量（含未迁移的 bonding-curve 微盘）；海量喷币=批量发币工厂号',
-    rs_dev_factory:'Dev 信誉低（评分 6/100：喷币 600 · 存活 2%）—— 批量发币工厂号',
-    rs_dev_reskin:'Dev 信誉低（评分 0/100：喷币 2000 · 存活 1% · 换皮重发）',
+    dev_k_open:'开外盘', dev_k_inner:'内盘沉底', dev_k_rate:'开外盘率', dev_k_reskin:'换皮重发',
+    dev_reskin_yes:'检出 ⚠', dev_reskin_no:'未检出 ✓',
+    dev_inner_tip:'一直卡在内盘(bonding curve)、从未打满开外盘的币数；海量内盘沉底 = 批量发币工厂号',
+    rs_dev_factory:'Dev 信誉低（评分 6/100：内盘沉底 600 · 开外盘率 2%）—— 批量发币工厂号',
+    rs_dev_reskin:'Dev 信誉低（评分 0/100：内盘沉底 2000 · 开外盘率 1% · 换皮重发）',
     devhist_none:'DEV 历史评估　|　未评估（仅对排序靠前的少数幸存者查 dev 历史；本币止步前关或不在评估池）',
-    devhist_tip:(score,open,ath,exited,reskin,surv)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　历史发币 ${open} 次　·　存活率 ${surv}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史。主分=存活率；喷币工厂/换皮/已清仓减分。点该行看右下角完整 Dev 信誉卡`,
+    devhist_tip:(score,open,ath,exited,reskin,surv)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　开外盘 ${open} 个　·　开外盘率 ${surv}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史。主分=开外盘率(毕业率)；内盘沉底多/换皮/已清仓减分。点该行看右下角 Dev 信誉卡`,
     vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
     rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
     rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
@@ -634,13 +634,13 @@ const I18N={
     dev_good:'GOOD', dev_mid:'OK', dev_weak:'WEAK',
     reskin_tag:'RESKIN', reskin_tip:'Reskin re-launch: this dev repeatedly changes identity / reuses the same image across new tokens (a serial-scam pattern)',
     dev_rep_label:'Dev reputation', dev_trust:'trusted ✓', dev_distrust:'untrusted ⛔',
-    dev_k_launches:'launched', dev_k_rug:'rugged', dev_k_alive:'alive', dev_k_reskin:'reskin',
-    dev_reskin_yes:'detected ⚠', dev_reskin_no:'none ✓', dev_spray:'spray',
-    dev_inner_tip:'total tokens sprayed (incl. un-migrated bonding-curve dust); mass spraying = token factory',
-    rs_dev_factory:'Low dev reputation (6/100: 600 sprayed · 2% survival) — token factory',
-    rs_dev_reskin:'Low dev reputation (0/100: 2000 sprayed · 1% survival · reskin re-launch)',
+    dev_k_open:'graduated', dev_k_inner:'stuck inner', dev_k_rate:'grad rate', dev_k_reskin:'reskin',
+    dev_reskin_yes:'detected ⚠', dev_reskin_no:'none ✓',
+    dev_inner_tip:'tokens stuck in the bonding curve (inner pool) that never filled to graduate to an outer pool; mass inner-pool dust = token factory',
+    rs_dev_factory:'Low dev reputation (6/100: 600 stuck inner · 2% graduation) — token factory',
+    rs_dev_reskin:'Low dev reputation (0/100: 2000 stuck inner · 1% graduation · reskin)',
     devhist_none:'Dev reputation　|　not evaluated (dev history is queried only for the top few survivors; this token was cut earlier or is outside the eval pool)',
-    devhist_tip:(score,open,ath,exited,reskin,surv)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} tokens launched　·　survival ${surv}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history). Main score = survival rate; token-factory spray / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
+    devhist_tip:(score,open,ath,exited,reskin,surv)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} graduated　·　graduation ${surv}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history). Main score = graduation rate; many stuck-in-inner-pool / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
     vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
     rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
     rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
@@ -828,15 +828,15 @@ function devCard(r){
   const sc=Math.round(r.devScore*100);
   const cls=r.devScore>=0.7?'good':r.devScore<0.45?'bad':'mid';
   const trust=r.devScore>=0.45?t('dev_trust'):t('dev_distrust');
-  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` (${Math.round(r.devRugRate*100)}%)`;
-  const launches=r.devLaunches??'?';
-  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner" data-tip="${t('dev_inner_tip')}">+${r.devInner} ${t('dev_spray')}</span>`:'';
+  const surv=(r.devSurv==null)?'?':Math.round(r.devSurv*100)+'%';
+  const survBad=(r.devSurv!=null&&r.devSurv<0.05);          // 开外盘率 <5% = 工厂号
+  const inner=r.devInner??'?', innerBad=(r.devInner!=null&&r.devInner>50);
   return `<div class="devcard ${cls}">
     <div class="dctop"><span class="dclbl">${t('dev_rep_label')}</span><span class="dcscore">${sc}<small>/100</small></span><span class="dctrust">${trust}</span></div>
     <div class="dcgrid">
-      <div class="dccell"><span class="dck">${t('dev_k_launches')}</span><span class="dcv">${launches} ${inner}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_rug')}</span><span class="dcv ${rugN>0?'bad':'good'}">${rugN}${rugPct}</span></div>
-      <div class="dccell"><span class="dck">${t('dev_k_alive')}</span><span class="dcv">${r.devAlive??'?'}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_open')}</span><span class="dcv">${r.devLaunches??'?'}</span></div>
+      <div class="dccell"><span class="dck has-tip" data-tip="${t('dev_inner_tip')}">${t('dev_k_inner')}</span><span class="dcv ${innerBad?'bad':''}">${inner}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_rate')}</span><span class="dcv ${survBad?'bad':(r.devSurv>=0.5?'good':'')}">${surv}</span></div>
       <div class="dccell"><span class="dck">${t('dev_k_reskin')}</span><span class="dcv ${r.devReskin?'bad':'good'}">${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span></div>
     </div></div>`;
 }
@@ -939,7 +939,7 @@ function normalize(data){
       hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
       bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
       smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
-      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devAlive:(f.dev_alive==null?null:f.dev_alive),devRugged:(f.dev_rugged==null?null:f.dev_rugged),devRugRate:(f.dev_rug_rate==null?null:f.dev_rug_rate),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
+      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
       v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
       warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
       reason:dec.reason,address:dec.address,

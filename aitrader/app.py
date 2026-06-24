@@ -510,21 +510,19 @@ def _dev_from_info(info: dict) -> dict:
     )
 
 def _merge_created(dp: dict, ct: dict):
-    """把 portfolio created-tokens（dev 钱包发币历史）并入 dev 画像：
-    inner_count=总喷币量(含未迁移的 bonding-curve)、open_count=已迁移发币数、open_ratio=存活/迁移率（demo 核心信号），
-    creator_ath_info.ath_mc=历史最佳币峰值；逐币 is_open/liquidity_less_4k 用于「存活/rug 次数」展示。"""
+    """把 portfolio created-tokens（dev 钱包发币历史）并入 dev 画像。pump.fun 分内盘(bonding curve)/外盘(迁移到正经池)：
+      inner_count = 一直卡在内盘、从未打满开外盘的币数（发出来没人接、沉底）；
+      open_count  = 真正打满开外盘/毕业的发币数；
+      open_ratio  = 开外盘率(毕业率) = open /(open + inner)，越低越像批量发币工厂；
+      creator_ath_info.ath_mc = 历史最佳币峰值。"""
     ct = ct or {}
     launches = int(_f(ct.get("open_count")))
-    dp["inner_count"] = int(_f(ct.get("inner_count")))
-    dp["launches"] = launches or dp.get("open_count", 0)
-    dp["survival_rate"] = _clamp(_f(ct.get("open_ratio")))
+    dp["inner_count"] = int(_f(ct.get("inner_count")))      # 内盘沉底（未开外盘）
+    dp["launches"] = launches or dp.get("open_count", 0)    # 开外盘（毕业）
+    dp["survival_rate"] = _clamp(_f(ct.get("open_ratio")))  # 开外盘率(毕业率)
     ath = (ct.get("creator_ath_info") or {}).get("ath_mc")
     if ath:
         dp["ath_mc"] = _f(ath)
-    # 展示用「存活/rug 次数」：存活 = 迁移数 × 存活率（与 demo 的「存活 N / rug X」口径一致）
-    dp["alive"] = round(dp["launches"] * dp["survival_rate"])
-    dp["rugged"] = max(0, dp["launches"] - dp["alive"])
-    dp["rug_rate"] = round(1 - dp["survival_rate"], 3)
 
 def _dev_reskin(dp: dict) -> float:
     """换皮重发强度 0..1：反复改推特身份(name_changes) 或 复用同一张图(image_dup) → 连环换皮诈骗。
@@ -645,10 +643,10 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None 
 
 def dev_score(dp: dict) -> float:
     """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）。
-    实现 demo 的真实算法：用 portfolio created-tokens 查 dev 钱包发币历史，按「存活率 + 喷币量」打分。
-      • 主分 = 存活/迁移率 survival_rate（open_ratio）：dev 历史发的币活下来的比例。100%→优质、~1%→工厂号；
-      • 喷币工厂强罚 inner_count：海量喷 bonding-curve 币（动辄上千）= 批量倾销工厂；
-      • 历史战绩 ath_mc 小幅加分，但**按存活率门控**（工厂的一次金狗是撞大运，不计入）；
+    实现 demo 的真实算法：用 portfolio created-tokens 查 dev 钱包发币历史，按「开外盘率 + 内盘沉底量」打分。
+      • 主分 = 开外盘率 survival_rate（open_ratio，毕业率）：dev 历史发的币打满开外盘的比例。100%→优质、~1%→工厂号；
+      • 内盘沉底强罚 inner_count：海量币卡在内盘从没开外盘（动辄上千）= 批量发币工厂；
+      • 历史战绩 ath_mc 小幅加分，但**按开外盘率门控**（工厂的一次金狗是撞大运，不计入）；
       • 换皮重发 reskin（改身份/复用图）扣分；已清仓本币 exited 轻罚；cto 社区接管小幅正向。
     回退：created-tokens 查不到（无 survival_rate）→ 退化用 open_count（连环发币）+ ath 战绩打折。"""
     if not dp:
@@ -656,12 +654,12 @@ def dev_score(dp: dict) -> float:
     ath = dp.get("ath_mc", 0.0)
     track = _clamp((math.log10(max(1.0, ath)) - 5.0) / 2.0)   # 历史最佳 $100k→0, $10M→1
     surv = dp.get("survival_rate")
-    if surv is not None:                                # —— v3 主路径：存活率主导（有 created-tokens 历史）
+    if surv is not None:                                # —— v3 主路径：开外盘率主导（有 created-tokens 历史）
         s = 0.25 + 0.55 * surv
         inner = dp.get("inner_count")
-        if inner is not None:                           # 喷币工厂强罚：50→0, 1000→满
+        if inner is not None:                           # 内盘沉底强罚（卡内盘没开外盘的币数）：50→0, 1000→满
             s -= 0.35 * _clamp((inner - 50) / 950.0)
-        s += 0.15 * track * surv                        # 战绩仅对高存活 dev 计入（门控撞大运）
+        s += 0.15 * track * surv                        # 战绩仅对高开外盘率 dev 计入（门控撞大运）
     else:                                               # —— 回退：仅有 token-info 字段
         serial = _clamp((dp.get("open_count", 0) - 20) / 180.0)
         s = 0.30 + 0.55 * track * (1 - 0.7 * serial) - 0.20 * serial
@@ -995,10 +993,10 @@ def _dev_reject_reason(f) -> str:
     dp = f.dev or {}
     bits = []
     if dp.get("inner_count", 0) > 50:
-        bits.append(f"喷币 {dp['inner_count']}")
+        bits.append(f"内盘沉底 {dp['inner_count']}")
     sr = dp.get("survival_rate")
     if sr is not None:
-        bits.append(f"存活 {sr*100:.0f}%")
+        bits.append(f"开外盘率 {sr*100:.0f}%")
     if _dev_reskin(dp) >= 0.25:
         bits.append("换皮重发")
     if dp.get("exited"):
@@ -1023,12 +1021,9 @@ def _feat(f):
                 liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1),
                 # dev 评估维度（仅查过 dev 历史的幸存者非空）
                 dev_score=(round(f.dev_eval, 2) if f.dev_eval is not None else None),
-                dev_launches=(f.dev.get("launches", f.dev.get("open_count")) if f.dev else None),
-                dev_inner_count=(f.dev.get("inner_count") if f.dev else None),
-                dev_survival=(f.dev.get("survival_rate") if f.dev else None),
-                dev_alive=(f.dev.get("alive") if f.dev else None),
-                dev_rugged=(f.dev.get("rugged") if f.dev else None),
-                dev_rug_rate=(f.dev.get("rug_rate") if f.dev else None),
+                dev_launches=(f.dev.get("launches", f.dev.get("open_count")) if f.dev else None),  # 开外盘(毕业)
+                dev_inner_count=(f.dev.get("inner_count") if f.dev else None),                   # 内盘沉底(未开外盘)
+                dev_survival=(f.dev.get("survival_rate") if f.dev else None),                    # 开外盘率
                 dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
                 dev_exited=(f.dev.get("exited") if f.dev else None),
                 dev_name_changes=(f.dev.get("name_changes") if f.dev else None),
