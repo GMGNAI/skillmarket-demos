@@ -238,7 +238,8 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 
 布局：演示横幅(仅DEMO) → 顶部状态条 → 7 KPI → 主区左(筛选结果表 + 实时日志) 右(持仓逃生监控 + 闸门漏斗 + 风控迷你条)。整体已为笔记本屏幕**紧凑化**(行/标题 padding 收紧)。
 
-筛选结果表列：TOKEN(可点复制 Ticker + 雷达图标=该币已持仓) / 规则→排序→LLM(闸门图标) / 安全(蜜罐·放权徽章) / BUND / DEV / T10 / 聪明钱/KOL(degen/kol) / 时机(早期·横盘·过热·阴跌) / LLM(pass/watch/reject) / 优先级 / 决策。
+筛选结果表列：TOKEN(可点复制 Ticker + 雷达图标=该币已持仓) / 规则→排序→LLM(闸门图标) / 安全(蜜罐·放权徽章) / BUND / DEV / T10 / 聪明钱/KOL(degen/kol) / **DEV史(dev 历史评估分 优质/中性/弱 + 0~100；hover 出历史最佳市值/发币次数/是否清仓；未评估的显 —)** / 时机(早期·横盘·过热·阴跌) / LLM(pass/watch/reject) / 优先级 / 决策。
+> 注意 `DEV`(持仓%) 与 `DEV史`(dev 历史声誉) 是两列：前者是 dev 当前持仓占比(gate1 避雷)，后者是新增的 dev 评估排序子分(见 §4)。`DEV史` 仅对每轮查过 dev 历史的少数幸存者(top dev_pool_n)有值，止步 gate1/2 或排序池外的显 `—`。
 - **TOKEN 列**：Ticker 下方显示 CA(前5…后4，点击新窗口开 GMGN 代币页) + 代币年龄(d/h/m/s，<1h 标绿)；点 Ticker 复制到剪贴板。
 - **行点击**：展开下方解读详情，再点收起；默认不展开(省空间)。
 - **「只看持仓」过滤**：TOKEN 旁 siren 图标开关，只显示已持仓的币。
@@ -288,7 +289,7 @@ POST `/api/settings/reset {chain}` **重置该链回默认**（删除落盘覆�
 **本会话已完成（真实数据 · 只读行情 · 买入做假 · 动能策略 · 多链 · 可演示托管）**
 - gmgn-cli 1.3.9 适配 + `build_from_row`（零额外 cli）+ 真实字段判据（见 §6）。
 - **排序改趋势动能模型** + **LLMJudge 金狗/接盘逻辑**（见 §4）：暴涨不一刀切，买占比区分跟/砍。
-- **新增 dev 评估维度**（见 §4）：`token info` 的 `dev` 对象 → `dev_score`（历史金狗加分 / 连环发币·删推·已清仓减分）作排序子分，折进 `priority_score`；两段排序（初排→只对前 24 个查 dev 历史→重排），结果按地址 600s 缓存省配额；Mock 同构合成、无 key 可跑。
+- **新增 dev 评估维度**（见 §4）：`token info` 的 `dev` 对象 → `dev_score`（历史金狗加分 / 连环发币·已清仓减分）作排序子分，折进 `priority_score`；两段排序（初排→只对前 24 个查 dev 历史→重排），结果按地址 600s 缓存省配额；Mock 同构合成、无 key 可跑。**前端新增 `DEV史` 列**（优质/中性/弱 + 0~100 分，hover 出历史最佳市值/发币次数/是否清仓 + 展开详情 + DEMO 假数据齐备）。
 - **持仓真实价格涨跌**（entry_price/cur_price/pnl）+ **落盘持久化**（positions.json，reload/重启不丢）+ **按链隔离** + **取消监控**(/api/unmonitor)。
 - **逃生监控修误报**：删 burn_ratio 信号（不可逆+跨源口径），只留 honeypot/renounced_mint/top10。
 - **多链切换**（SOL/BSC/Base/ETH）：**链改为请求维度**（无全局当前链）——按链缓存 adapter + 按链 trending 短缓存(3s，同链多 tab 共享一次 cli)；前端每 tab 用 sessionStorage 各自持链，N tab 各看各链互不干扰；后台 tab 暂停轮询省配额。按链记忆命令(ST.trending_cmds)、买入单位/数量按链。
