@@ -74,6 +74,7 @@ CFG = {
     # 结果按地址缓存 dev_info_ttl_s 秒（dev 历史变化慢，跨轮复用、不每轮重拉，省 cli 配额）。
     "dev_pool_n": 24,            # >llm_max，让 dev 子分能重排 gate3 名额边界
     "dev_info_ttl_s": 600,
+    "min_dev_score": 0.15,       # dev 评分过滤：低于此分（工厂号/连环换皮/喷币）直接砍，不进 LLM/待决策
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",
     "rank_weights": {
@@ -203,6 +204,7 @@ class GMGNAdapter:
     def token_info(self, addr) -> dict: raise NotImplementedError
     def token_price(self, addr) -> float: raise NotImplementedError
     def dev_info(self, addr) -> dict: raise NotImplementedError   # dev 评估：归一化 creator/dev 历史
+    def created_tokens(self, wallet) -> dict: raise NotImplementedError  # dev 钱包发币历史（含存活率）
     def token_security(self, addr) -> dict: raise NotImplementedError
     def token_holders(self, addr) -> dict: raise NotImplementedError
     def portfolio_stats(self, wallet) -> dict: raise NotImplementedError
@@ -261,10 +263,24 @@ class LiveGMGN(GMGNAdapter):
         p = d.get("price")
         return _f(p.get("price")) if isinstance(p, dict) else _f(p)
 
+    def created_tokens(self, wallet):
+        # dev 钱包发币历史：portfolio created-tokens（含 inner_count 喷币量 / open_ratio 存活率 / 逐币状态）
+        return self._cli("portfolio", "created-tokens", "--wallet", wallet)
+
     def dev_info(self, addr):
-        # dev 评估维度的数据源：token info 行内的 dev 对象（含 creator 历史/最佳币市值/删推等）
+        # dev 评估数据源：① token info 的 dev 对象（creator 地址/换皮历史/已清仓） +
+        # ② portfolio created-tokens 查该 creator 钱包的发币历史（喷币量/存活率/逐币 rug 判定）。
         d = self._cli("token", "info", "--address", addr)
-        return _dev_from_info(d.get("data", d) if isinstance(d, dict) else {})
+        info = d.get("data", d) if isinstance(d, dict) else {}
+        dp = _dev_from_info(info)
+        creator = (info.get("dev") or {}).get("creator_address")
+        if creator:
+            try:
+                ct = self.created_tokens(creator)
+                _merge_created(dp, ct.get("data", ct) if isinstance(ct, dict) else {})
+            except Exception:
+                pass    # created-tokens 查不到 → dev_score 回退用 token-info 字段，不阻断
+        return dp
 
     def token_security(self, addr):
         # 归一化为逃生监控所需的安全快照（真实 1.3.9 无 security_score）
@@ -325,7 +341,8 @@ class MockGMGN(GMGNAdapter):
                 buy_tax=0.0, sell_tax=0.0, rug=0.0, bundler=0.05, dev=0.03, top10=0.25,
                 degen=0, renowned=0, sniper=0, age_min=45,
                 dev_open=6, dev_status="creator_hold", dev_bal=1.0, dev_ath_mc=0.0,
-                dev_delpost=0, dev_cto=0, dev_names=0, dev_imgdup=0):
+                dev_delpost=0, dev_cto=0, dev_names=0, dev_imgdup=0,
+                dev_inner=0, dev_surv=1.0):
             if chg5m is None:
                 chg5m = round(chg1h * 0.3, 2)   # 默认 5m 与 1h 同向
             return dict(symbol=symbol, price=price, market_cap=mcap, volume=vol,
@@ -338,12 +355,13 @@ class MockGMGN(GMGNAdapter):
                         # dev 评估维度（与真实 token info 的 dev 对象同构）
                         dev_open_count=dev_open, dev_token_status=dev_status, dev_token_balance=dev_bal,
                         dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto,
-                        dev_names=dev_names, dev_imgdup=dev_imgdup)
+                        dev_names=dev_names, dev_imgdup=dev_imgdup,
+                        dev_inner=dev_inner, dev_surv=dev_surv)
         return {
             # 干净 + 强共识 → 高优先级 ACTION
             "CLEANCATxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
                 tok("CLEANCAT", 0.0021, 180_000, 950_000, 35.0, bundler=0.04, dev=0.03, top10=0.22, degen=2, renowned=1, age_min=42,
-                    dev_open=5, dev_ath_mc=8_000_000),   # 优质 dev：历史出过金狗、发币少
+                    dev_open=5, dev_ath_mc=8_000_000, dev_inner=5, dev_surv=1.0),   # 优质 dev：5发全活·出过金狗·不喷币
             # honeypot → gate1 避雷
             "RUGPULLyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy":
                 tok("RUGPULL", 0.0009, 60_000, 400_000, 180.0, honeypot=1, mint=0, freeze=0, bundler=0.22, dev=0.18, top10=0.61, degen=1),
@@ -356,15 +374,15 @@ class MockGMGN(GMGNAdapter):
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
                 tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
-                    dev_open=180, dev_ath_mc=30_000, dev_names=10, dev_imgdup=8),   # 连环发币180+换皮重发(改名10/复用图8) → dev 子分极低
+                    dev_open=180, dev_ath_mc=30_000, dev_names=10, dev_imgdup=8, dev_inner=2000, dev_surv=0.01),   # 喷币2000·存活1%·换皮 → 工厂号
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
                 tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
-                    dev_open=140, dev_ath_mc=50_000),   # 连环发币工厂号、无像样战绩 → dev 子分低
+                    dev_open=140, dev_ath_mc=50_000, dev_inner=600, dev_surv=0.02),   # 喷币600·存活2% → 工厂号
             # 干净 → ACTION（可能触并发/敞口风控 → risk_warn）
             "BASEPEPEuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu":
                 tok("BASEPEPE", 0.0015, 160_000, 760_000, 31.0, bundler=0.07, dev=0.03, top10=0.30, degen=1, age_min=60,
-                    dev_open=12, dev_status="creator_close", dev_bal=0.0),   # dev 已清仓本币 → 利益不对齐，轻罚
+                    dev_open=12, dev_status="creator_close", dev_bal=0.0, dev_inner=15, dev_surv=0.55),   # 已清仓·存活55% → 中性偏弱
             # 干净但零共识 → gate2 共识门
             "LONECOINllllllllllllllllllllllllllllllllllll":
                 tok("LONECOIN", 0.0012, 100_000, 300_000, 18.0, bundler=0.06, dev=0.03, top10=0.28, degen=0, renowned=0),
@@ -398,16 +416,24 @@ class MockGMGN(GMGNAdapter):
                     renounced_freeze=bool(d["renounced_freeze_account"]),
                     burn_ratio=d["burn_ratio"], top10=d["top_10_holder_rate"])
 
+    def created_tokens(self, wallet):
+        # 同构空壳：Mock 的发币历史在 dev_info 内直接合成（见下），此处仅满足适配器契约
+        return dict(open_count=0, inner_count=0, open_ratio=1.0, creator_ath_info={}, tokens=[])
+
     def dev_info(self, addr):
-        # 与 LiveGMGN.dev_info 同构（_dev_from_info 的归一化输出）
+        # 与 LiveGMGN.dev_info 同构：token-info 字段 + created-tokens 发币历史（存活率/喷币量）合并
         d = self.db[addr]
         status = d["dev_token_status"]; bal = d["dev_token_balance"]
-        return dict(
-            open_count=d["dev_open_count"], status=status, balance=bal,
+        dp = dict(
+            creator="MOCKDEV" + addr[:8], open_count=d["dev_open_count"], status=status, balance=bal,
             exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
             ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
             create_count=d["dev_open_count"], cto=bool(d["dev_cto"]),
             name_changes=d["dev_names"], image_dup=d["dev_imgdup"])
+        _merge_created(dp, dict(open_count=d["dev_open_count"], inner_count=d["dev_inner"],
+                                open_ratio=d["dev_surv"],
+                                creator_ath_info={"ath_mc": d["dev_ath_mc"]}, tokens=[]))
+        return dp
 
     def token_holders(self, addr):
         d = self.db[addr]
@@ -471,6 +497,7 @@ def _dev_from_info(info: dict) -> dict:
     bal = _f(dev.get("creator_token_balance"))
     name_hist = dev.get("twitter_name_change_history")
     return dict(
+        creator=dev.get("creator_address") or "",
         open_count=int(_f(dev.get("creator_open_count"))),
         status=status, balance=bal,
         exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
@@ -481,6 +508,23 @@ def _dev_from_info(info: dict) -> dict:
         name_changes=len(name_hist) if isinstance(name_hist, list) else 0,
         image_dup=int(_f((info or {}).get("image_dup_count"))),
     )
+
+def _merge_created(dp: dict, ct: dict):
+    """把 portfolio created-tokens（dev 钱包发币历史）并入 dev 画像：
+    inner_count=总喷币量(含未迁移的 bonding-curve)、open_count=已迁移发币数、open_ratio=存活/迁移率（demo 核心信号），
+    creator_ath_info.ath_mc=历史最佳币峰值；逐币 is_open/liquidity_less_4k 用于「存活/rug 次数」展示。"""
+    ct = ct or {}
+    launches = int(_f(ct.get("open_count")))
+    dp["inner_count"] = int(_f(ct.get("inner_count")))
+    dp["launches"] = launches or dp.get("open_count", 0)
+    dp["survival_rate"] = _clamp(_f(ct.get("open_ratio")))
+    ath = (ct.get("creator_ath_info") or {}).get("ath_mc")
+    if ath:
+        dp["ath_mc"] = _f(ath)
+    # 展示用「存活/rug 次数」：存活 = 迁移数 × 存活率（与 demo 的「存活 N / rug X」口径一致）
+    dp["alive"] = round(dp["launches"] * dp["survival_rate"])
+    dp["rugged"] = max(0, dp["launches"] - dp["alive"])
+    dp["rug_rate"] = round(1 - dp["survival_rate"], 3)
 
 def _dev_reskin(dp: dict) -> float:
     """换皮重发强度 0..1：反复改推特身份(name_changes) 或 复用同一张图(image_dup) → 连环换皮诈骗。
@@ -601,25 +645,29 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None 
 
 def dev_score(dp: dict) -> float:
     """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）。
-    设计借鉴「dev 信誉分」demo（命中率/存活率思维），但 gmgn-cli 不给 rug 次数/存活数，故用可得信号近似：
-      • 历史战绩 track：史上最佳币峰值市值 ath_mc，**按发币量打折**——一次金狗摊到上百次发币=命中率极低、含金量低；
-      • 连环发币 serial：open_count 越高越像批量发币工厂，直接扣分 + 折掉战绩；
-      • 换皮重发 reskin：反复改身份 / 复用同图 → 连环换皮诈骗，扣分（对应 demo 的「换皮重发」）；
-      • 已清仓本币 exited：利益不对齐；连环发币者已清仓=预置倾销，叠加更重；
-      • cto（社区接管）小幅正向。
-    del_post_count 口径不稳 → 不计分（仅 _feat 暴露备查）。"""
+    实现 demo 的真实算法：用 portfolio created-tokens 查 dev 钱包发币历史，按「存活率 + 喷币量」打分。
+      • 主分 = 存活/迁移率 survival_rate（open_ratio）：dev 历史发的币活下来的比例。100%→优质、~1%→工厂号；
+      • 喷币工厂强罚 inner_count：海量喷 bonding-curve 币（动辄上千）= 批量倾销工厂；
+      • 历史战绩 ath_mc 小幅加分，但**按存活率门控**（工厂的一次金狗是撞大运，不计入）；
+      • 换皮重发 reskin（改身份/复用图）扣分；已清仓本币 exited 轻罚；cto 社区接管小幅正向。
+    回退：created-tokens 查不到（无 survival_rate）→ 退化用 open_count（连环发币）+ ath 战绩打折。"""
     if not dp:
         return 0.5                                      # 查不到 → 中性，不偏袒也不冤杀
-    oc = dp.get("open_count", 0)
-    serial = _clamp((oc - 20) / 180.0)                  # 20 次内算正常，200 次→满（连环发币强度）
-    # 历史战绩按发币量打折：重度连环发币把「史上最佳」打到 3 折（一次撞大运 ≠ 优质 dev）
-    track = _clamp((math.log10(max(1.0, dp.get("ath_mc", 0.0))) - 5.0) / 2.0)   # $100k→0, $10M→1
-    track_adj = track * (1 - 0.7 * serial)
-    s = 0.30 + 0.55 * track_adj
-    s -= 0.20 * serial                                  # 连环发币本身再直接扣
+    ath = dp.get("ath_mc", 0.0)
+    track = _clamp((math.log10(max(1.0, ath)) - 5.0) / 2.0)   # 历史最佳 $100k→0, $10M→1
+    surv = dp.get("survival_rate")
+    if surv is not None:                                # —— v3 主路径：存活率主导（有 created-tokens 历史）
+        s = 0.25 + 0.55 * surv
+        inner = dp.get("inner_count")
+        if inner is not None:                           # 喷币工厂强罚：50→0, 1000→满
+            s -= 0.35 * _clamp((inner - 50) / 950.0)
+        s += 0.15 * track * surv                        # 战绩仅对高存活 dev 计入（门控撞大运）
+    else:                                               # —— 回退：仅有 token-info 字段
+        serial = _clamp((dp.get("open_count", 0) - 20) / 180.0)
+        s = 0.30 + 0.55 * track * (1 - 0.7 * serial) - 0.20 * serial
     s -= 0.20 * _dev_reskin(dp)                         # 换皮重发扣分
-    if dp.get("exited"):                                # 已清仓本币：连环发币者已清仓=预置倾销，随 serial 叠加更重
-        s -= 0.10 + 0.15 * serial
+    if dp.get("exited"):                                # 已清仓本币 → 利益不对齐
+        s -= 0.10
     if dp.get("cto"):                                   # 社区接管 → dev 跑路风险被淡化，小幅正向
         s += 0.05
     return round(_clamp(s), 3)
@@ -878,10 +926,15 @@ def screen_once(chain: str) -> dict:
     # STEP 4b dev 评估维度：只对排序靠前的 dev_pool_n 个额外查 dev 历史（带 TTL 缓存），
     # 算 dev 子分折进 priority_score 重排——dev 好的上浮、连环发币/删推/已清仓的下沉。
     pool = scored[:CFG["dev_pool_n"]]
+    dev_ok = []
     for _, f in pool:
         f.dev = get_dev_profile(g, chain, f.address)
         f.dev_eval = dev_score(f.dev)
-    pool = [(priority_score(f, 0.8, _crowd(f), f.dev_eval), f) for _, f in pool]
+        if f.dev_eval < CFG["min_dev_score"]:           # dev 评分过滤：工厂号/连环换皮/喷币 → 直接砍（不进 LLM/待决策）
+            decisions.append(_reject(f, _dev_reject_reason(f), 3, None))
+            continue
+        dev_ok.append(f)
+    pool = [(priority_score(f, 0.8, _crowd(f), f.dev_eval), f) for f in dev_ok]
     pool.sort(key=lambda x: -x[0])
     ranked = pool + scored[CFG["dev_pool_n"]:]          # dev 重排的头部在前，池外按初排分续后
     to_llm = ranked[:CFG["llm_max"]]
@@ -937,6 +990,22 @@ def _public_broadcast_loop():
             _PUBLIC_CACHE["err"] = str(e)
         stop.wait(DEFAULT_POLL_S)
 
+def _dev_reject_reason(f) -> str:
+    """dev 评分过滤的拒绝理由（demo 风格：点明工厂号/换皮/喷币/已清仓）。"""
+    dp = f.dev or {}
+    bits = []
+    if dp.get("inner_count", 0) > 50:
+        bits.append(f"喷币 {dp['inner_count']}")
+    sr = dp.get("survival_rate")
+    if sr is not None:
+        bits.append(f"存活 {sr*100:.0f}%")
+    if _dev_reskin(dp) >= 0.25:
+        bits.append("换皮重发")
+    if dp.get("exited"):
+        bits.append("已清仓本币")
+    detail = ("：" + " · ".join(bits)) if bits else ""
+    return f"REJECT Dev 信誉低（评分 {round((f.dev_eval or 0)*100)}/100{detail}）"
+
 def _reject(f, reason, gate_idx, v):
     log("FILTER", f.symbol_safe, reason)
     return dict(decision=dict(symbol=f.symbol_safe, address=f.address, action="SKIP",
@@ -954,10 +1023,14 @@ def _feat(f):
                 liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1),
                 # dev 评估维度（仅查过 dev 历史的幸存者非空）
                 dev_score=(round(f.dev_eval, 2) if f.dev_eval is not None else None),
-                dev_open_count=(f.dev.get("open_count") if f.dev else None),
+                dev_launches=(f.dev.get("launches", f.dev.get("open_count")) if f.dev else None),
+                dev_inner_count=(f.dev.get("inner_count") if f.dev else None),
+                dev_survival=(f.dev.get("survival_rate") if f.dev else None),
+                dev_alive=(f.dev.get("alive") if f.dev else None),
+                dev_rugged=(f.dev.get("rugged") if f.dev else None),
+                dev_rug_rate=(f.dev.get("rug_rate") if f.dev else None),
                 dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
                 dev_exited=(f.dev.get("exited") if f.dev else None),
-                dev_del_post=(f.dev.get("del_post_count") if f.dev else None),
                 dev_name_changes=(f.dev.get("name_changes") if f.dev else None),
                 dev_image_dup=(f.dev.get("image_dup") if f.dev else None),
                 dev_reskin=(_dev_reskin(f.dev) >= 0.25 if f.dev else None))

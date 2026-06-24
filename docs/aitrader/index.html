@@ -133,6 +133,20 @@ td{padding:5px 10px;vertical-align:middle}
 .xbtn:hover{border-color:var(--clay);color:var(--clay)}
 .inj{display:inline-flex;align-items:center;gap:3px;color:var(--amber);font-size:8px;font-weight:600;margin-left:5px;border:1px solid #f0a93b44;background:#f0a93b14;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
 .reskin{display:inline-flex;align-items:center;color:var(--clay);font-size:8px;font-weight:600;margin-left:4px;border:1px solid var(--clay);background:#c8503714;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
+.devcard{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#ffffff05}
+.devcard.good{border-color:#a3e63544;background:#a3e63510}.devcard.mid{border-color:#f0a93b44;background:#f0a93b0d}.devcard.bad{border-color:#c8503755;background:#c8503712}
+.devcard .dctop{display:flex;align-items:baseline;gap:10px}
+.devcard .dclbl{color:var(--dim);font-size:10px;letter-spacing:.08em}
+.devcard .dcscore{font-size:26px;font-weight:700;line-height:1;color:var(--lime)}
+.devcard.mid .dcscore{color:var(--amber)}.devcard.bad .dcscore{color:var(--clay)}
+.devcard .dcscore small{font-size:11px;font-weight:400;color:var(--dim2)}
+.devcard .dctrust{margin-left:auto;font-size:11px;font-weight:600;color:var(--lime)}
+.devcard.bad .dctrust{color:var(--clay)}.devcard.mid .dctrust{color:var(--amber)}
+.devcard .dcgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:9px}
+.devcard .dccell{display:flex;flex-direction:column;gap:2px}
+.devcard .dck{color:var(--dim2);font-size:9px;letter-spacing:.05em}
+.devcard .dcv{font-size:12px;font-weight:600}.devcard .dcv.good{color:var(--lime)}.devcard .dcv.bad{color:var(--clay)}
+.devcard .dcinner{color:var(--clay);font-size:9px;font-weight:500;cursor:help}
 .gates{display:flex;gap:4px}
 .pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
 .pip svg{width:11px;height:11px}
@@ -460,8 +474,14 @@ const I18N={
     smc_tip:(degen,kol,smc)=>`聪明钱/KOL　|　${degen} 个聪明钱(smart_degen) / ${kol} 个知名KOL(renowned)，合计 ${smc}`,
     dev_good:'优质', dev_mid:'中性', dev_weak:'弱',
     reskin_tag:'换皮', reskin_tip:'换皮重发：该 dev 反复改身份 / 复用同一张图连环发新币（连环换皮诈骗惯用）',
+    dev_rep_label:'Dev 信誉分', dev_trust:'可信 ✓', dev_distrust:'不可信 ⛔',
+    dev_k_launches:'历史发币', dev_k_rug:'rug 次数', dev_k_alive:'存活', dev_k_reskin:'换皮重发',
+    dev_reskin_yes:'检出 ⚠', dev_reskin_no:'未检出 ✓', dev_spray:'喷币',
+    dev_inner_tip:'总喷币量（含未迁移的 bonding-curve 微盘）；海量喷币=批量发币工厂号',
+    rs_dev_factory:'Dev 信誉低（评分 6/100：喷币 600 · 存活 2%）—— 批量发币工厂号',
+    rs_dev_reskin:'Dev 信誉低（评分 0/100：喷币 2000 · 存活 1% · 换皮重发）',
     devhist_none:'DEV 历史评估　|　未评估（仅对排序靠前的少数幸存者查 dev 历史；本币止步前关或不在评估池）',
-    devhist_tip:(score,open,ath,exited,reskin)=>`DEV 历史评估（排序子分）　|　评分 ${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n命中率思维：史上最佳按发币量打折；连环发币 / 换皮重发 / 已清仓 减分（gmgn-cli 不给 rug 率/存活数，故用此代理）`,
+    devhist_tip:(score,open,ath,exited,reskin,surv)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　历史发币 ${open} 次　·　存活率 ${surv}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史。主分=存活率；喷币工厂/换皮/已清仓减分。点该行看右下角完整 Dev 信誉卡`,
     vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
     rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
     rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
@@ -613,8 +633,14 @@ const I18N={
     smc_tip:(degen,kol,smc)=>`Smart money/KOL　|　${degen} smart_degen / ${kol} renowned KOL, total ${smc}`,
     dev_good:'GOOD', dev_mid:'OK', dev_weak:'WEAK',
     reskin_tag:'RESKIN', reskin_tip:'Reskin re-launch: this dev repeatedly changes identity / reuses the same image across new tokens (a serial-scam pattern)',
+    dev_rep_label:'Dev reputation', dev_trust:'trusted ✓', dev_distrust:'untrusted ⛔',
+    dev_k_launches:'launched', dev_k_rug:'rugged', dev_k_alive:'alive', dev_k_reskin:'reskin',
+    dev_reskin_yes:'detected ⚠', dev_reskin_no:'none ✓', dev_spray:'spray',
+    dev_inner_tip:'total tokens sprayed (incl. un-migrated bonding-curve dust); mass spraying = token factory',
+    rs_dev_factory:'Low dev reputation (6/100: 600 sprayed · 2% survival) — token factory',
+    rs_dev_reskin:'Low dev reputation (0/100: 2000 sprayed · 1% survival · reskin re-launch)',
     devhist_none:'Dev reputation　|　not evaluated (dev history is queried only for the top few survivors; this token was cut earlier or is outside the eval pool)',
-    devhist_tip:(score,open,ath,exited,reskin)=>`Dev reputation (ranking sub-score)　|　score ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token':'still holding'}　·　reskin re-launch ${reskin?'detected ⚠':'none ✓'}\nhit-rate thinking: best-ever mcap is discounted by launch count; serial launching / reskin / having exited subtract (gmgn-cli gives no rug-rate/survival, so these are proxies)`,
+    devhist_tip:(score,open,ath,exited,reskin,surv)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} tokens launched　·　survival ${surv}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history). Main score = survival rate; token-factory spray / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
     vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
     rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
     rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
@@ -793,7 +819,26 @@ function devCell(t){
   const lbl=s>=0.7?t2('dev_good'):s>=0.45?t2('dev_mid'):t2('dev_weak');
   const cls=s>=0.7?'good':s<0.45?'bad':'';
   const reskin=t.devReskin?`<span class="reskin" data-tip="${t2('reskin_tip')}">${t2('reskin_tag')}</span>`:'';
-  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devOpen??'?',fmtMc(t.devAth),t.devExited,t.devReskin)}">${lbl} ${sc}</span>${reskin}`;
+  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devLaunches??'?',fmtMc(t.devAth),t.devExited,t.devReskin,t.devSurv==null?'?':Math.round(t.devSurv*100))}">${lbl} ${sc}</span>${reskin}`;
+}
+/* Dev 信誉卡（点击代币行 → 右下角详情）：复刻 demo 的「信誉分 + 历史发币/rug/存活/换皮重发」。
+   数据来自 portfolio created-tokens 查 dev 钱包发币历史。devScore==null（未评估）则不渲染卡。 */
+function devCard(r){
+  if(r.devScore==null) return '';
+  const sc=Math.round(r.devScore*100);
+  const cls=r.devScore>=0.7?'good':r.devScore<0.45?'bad':'mid';
+  const trust=r.devScore>=0.45?t('dev_trust'):t('dev_distrust');
+  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` (${Math.round(r.devRugRate*100)}%)`;
+  const launches=r.devLaunches??'?';
+  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner" data-tip="${t('dev_inner_tip')}">+${r.devInner} ${t('dev_spray')}</span>`:'';
+  return `<div class="devcard ${cls}">
+    <div class="dctop"><span class="dclbl">${t('dev_rep_label')}</span><span class="dcscore">${sc}<small>/100</small></span><span class="dctrust">${trust}</span></div>
+    <div class="dcgrid">
+      <div class="dccell"><span class="dck">${t('dev_k_launches')}</span><span class="dcv">${launches} ${inner}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_rug')}</span><span class="dcv ${rugN>0?'bad':'good'}">${rugN}${rugPct}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_alive')}</span><span class="dcv">${r.devAlive??'?'}</span></div>
+      <div class="dccell"><span class="dck">${t('dev_k_reskin')}</span><span class="dcv ${r.devReskin?'bad':'good'}">${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span></div>
+    </div></div>`;
 }
 /* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
 function fmtAge(min){
@@ -847,10 +892,10 @@ const COL={ACTION:'var(--lime)',WARN:'var(--amber)',SKIP:'var(--clay)',BLOCK:'va
 /* 与后端 priority_score 同构：共识计数亚线性压缩，无合成安全分 */
 function priCalc(t){const c=Math.min(28,9*Math.log10(1+(t.smc||0)));let s=t.conv*38+c+(1-Math.min(t.top10||0,1))*14+((t.ren)?6:0)+(t.crowd==='early'?10:t.crowd==='late'?-15:0);return Math.max(0,Math.min(99,Math.round(s)));}
 const SEED=[
- {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.82,devOpen:5,devAth:8000000,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_cleancat'},
- {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'pass',conv:.81,status:'action',size:0.2857,died:null,devScore:.17,devOpen:140,devAth:50000,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_gooddog'},
- {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,devScore:.20,devOpen:12,devAth:0,devExited:true,exitK:'exit_ladder',thesisK:'th_basepepe'},
- {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'reject',conv:.55,status:'reject',died:4,devScore:.0,devOpen:180,devAth:30000,devExited:false,devReskin:true,reasonK:'rs_latemoon'},
+ {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.94,devLaunches:5,devInner:5,devSurv:1.0,devAlive:5,devRugged:0,devRugRate:0,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_cleancat'},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'-',conv:0,status:'reject',died:3,devScore:.06,devLaunches:140,devInner:600,devSurv:.02,devAlive:3,devRugged:137,devRugRate:.98,devExited:false,devReskin:false,reasonK:'rs_dev_factory'},
+ {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,devScore:.45,devLaunches:12,devInner:15,devSurv:.55,devAlive:7,devRugged:5,devRugRate:.45,devExited:true,devReskin:false,exitK:'exit_ladder',thesisK:'th_basepepe'},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'-',conv:0,status:'reject',died:3,devScore:.0,devLaunches:180,devInner:2000,devSurv:.01,devAlive:2,devRugged:178,devRugRate:.99,devExited:false,devReskin:true,reasonK:'rs_dev_reskin'},
  {sym:'BUNDLED',address:'5sFgUaXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ3yQ',age:33,hp:false,ren:true,bund:.41,dev:.25,top10:.55,smc:8,degen:6,kol:2,crowd:'early',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_bundled'},
  {sym:'RUGPULL',address:'8vR7tWn4bYj6cLwZ3sFgUaXpBn2dMfTqVrJkHx9pQ5mKzR',age:15,hp:true,ren:false,bund:.22,dev:.18,top10:.61,smc:1,degen:1,kol:0,crowd:'crowded',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_rugpull'},
  {sym:'INJECT',inj:true,address:'3aXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ5sFgUwH',age:20,hp:false,ren:true,bund:.09,dev:.05,top10:.33,smc:0,degen:0,kol:0,crowd:'early',v:'-',conv:0,status:'reject',died:2,reasonK:'rs_inject'},
@@ -894,7 +939,7 @@ function normalize(data){
       hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
       bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
       smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
-      devScore:(f.dev_score==null?null:f.dev_score),devOpen:(f.dev_open_count==null?null:f.dev_open_count),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
+      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devAlive:(f.dev_alive==null?null:f.dev_alive),devRugged:(f.dev_rugged==null?null:f.dev_rugged),devRugRate:(f.dev_rug_rate==null?null:f.dev_rug_rate),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
       v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
       warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
       reason:dec.reason,address:dec.address,
@@ -1009,9 +1054,8 @@ function renderDetail(){
   const r=(sel>=0?T[sel]:null); if(!r){document.getElementById('detail').innerHTML='';return;}
   let right;
   if(r.status==='action'){
-    const devLine=(r.devScore==null)?'':`<div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_dev',Math.round(r.devScore*100),fmtMc(r.devAth),r.devOpen??'?',r.devExited,r.devReskin)}</div>`;
     right=`<div class="lab">${t('detail_passed',r.pri,r.size,r.warn)}</div>
-      <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>${devLine}`;
+      <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
   }else{
     right=`<div class="lab">${t('detail_died_lab',gateName(r.died))}</div><span class="clay">${reasonOf(r)}</span>`;
   }
@@ -1021,7 +1065,7 @@ function renderDetail(){
   const llmState=(r.v==='-'?t('detail_no_llm'):r.v.toUpperCase()+' · conv '+(+r.conv).toFixed(2));
   document.getElementById('detail').innerHTML=`
     <div class="dl"><h4>${r.sym}</h4><br>${action}</div>
-    <div class="dr">${right}<div style="margin-top:8px;color:var(--dim);font-size:10.5px">${t('detail_llm_note',llmState)}</div></div>`;
+    <div class="dr">${devCard(r)}${right}<div style="margin-top:8px;color:var(--dim);font-size:10.5px">${t('detail_llm_note',llmState)}</div></div>`;
 }
 
 /* ── escape monitor ── */
