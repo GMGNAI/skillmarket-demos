@@ -55,7 +55,7 @@ trending(便宜, 1 次 cli, 行内已含全部尽调字段)
 
 **排序 = 趋势动能模型**（用户选定的选币目标，见 `CFG["rank_weights"]`）：
 - `priority_score` = 加权(5m 动能·30 + 1h 动能·12 + 买卖比·18 + 换手·12 + 共识·12 + 安全筹码·10 + **dev 评估·12**)，各子分归一化；1h 阴跌则整体 ×0.4 沉底。
-- **dev 评估维度**（`dev_score`，纯代码 0..1 加分项）：历史出过金狗(`ath_mc`)显著加分；连环发币(`creator_open_count`>50)/删推广推文(`twitter_del_post_token_count`)/已清仓本币(`creator_token_status`+balance)减分；社区接管(CTO)托底。数据来自 `token info` 的 `dev` 对象——**只对初排靠前的 `dev_pool_n`(24) 个幸存者额外调 cli**，结果按地址缓存 `dev_info_ttl_s`(600s)、跨轮复用不重拉。查不到→中性 0.5，不冤杀不阻断。
+- **dev 评估维度**（`dev_score`，纯代码 0..1 加分项；只用口径稳定信号，对齐「口径稳定的才用」纪律）：主分=历史最佳币峰值市值 `ath_mc`（dev 有没有做出过金狗）；减分=连环发币 `creator_open_count`>50（工厂号风险）、已清仓本币 `creator_token_status`+balance（利益不对齐）；`cto_flag`（社区接管）小幅正向。`twitter_del_post_token_count` 真实值普遍是大噪声数、口径不稳 → **不计分**，仅在 `_feat` 暴露备查。数据来自 `token info` 的 `dev` 对象——**只对初排靠前的 `dev_pool_n`(24) 个幸存者额外调 cli**，结果按地址缓存 `dev_info_ttl_s`(600s)、跨轮复用不重拉。查不到→中性 0.5，不冤杀不阻断。
 - `LLMJudge`（启发式占位，仍是动能逻辑）：**金狗 vs 接盘**靠买占比区分——
   1h&5m 双跌 → reject(阴跌)；买占比 < `buy_ratio_reject`(0.42) → reject(卖压主导/接盘位)；
   买占比 ≥ `buy_ratio_pass`(0.50) 且 5m 未走弱 → pass(暴涨/late 也跟金狗)；`late`(1h≥300%)仅高位风险标签，不再一票否决。

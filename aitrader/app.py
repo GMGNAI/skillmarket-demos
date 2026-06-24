@@ -355,7 +355,7 @@ class MockGMGN(GMGNAdapter):
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
                 tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
-                    dev_open=40, dev_delpost=3),   # 删推广推文 → 诈骗惯犯，dev 子分重罚
+                    dev_open=180, dev_ath_mc=30_000),   # 连环发币 180 次、无像样战绩 → dev 子分低
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
                 tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
@@ -585,21 +585,22 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None 
     return max(0, min(99, round(s)))
 
 def dev_score(dp: dict) -> float:
-    """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）：
-    历史出过金狗(ath_mc)显著加分；连环发币(open_count)/删推广推文/已清仓本币减分；社区接管(CTO)淡化 dev 风险。"""
+    """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）。
+    只用口径稳定的信号（对齐 SPEC「口径稳定的才用」纪律）：
+      主分=历史最佳币峰值市值 ath_mc（dev 有没有做出过金狗）；
+      减分=连环发币 open_count（工厂号/批量发币风险）、已清仓本币 exited（利益不对齐）；
+      cto（社区接管）小幅正向。del_post_count 口径不稳（真实值普遍是大噪声数）→ 不计分，仅 _feat 暴露备查。"""
     if not dp:
         return 0.5                                      # 查不到 → 中性，不偏袒也不冤杀
     track = _clamp((math.log10(max(1.0, dp.get("ath_mc", 0.0))) - 5.0) / 2.0)  # 历史最佳 $100k→0, $10M→1
-    s = 0.35 + 0.55 * track
+    s = 0.30 + 0.60 * track
     oc = dp.get("open_count", 0)
     if oc > 50:                                         # 连环发币/工厂号风险（线性到 300 封顶）
-        s -= 0.30 * _clamp((oc - 50) / 250.0)
-    if dp.get("del_post_count", 0) > 0:                 # 删除推广推文 → 诈骗惯犯，重罚
-        s -= 0.30
+        s -= 0.25 * _clamp((oc - 50) / 250.0)
     if dp.get("exited"):                                # dev 已清仓本币 → 利益不对齐，轻罚
-        s -= 0.15
-    if dp.get("cto"):                                   # 社区接管 → dev 风险淡化，托底
-        s = max(s, 0.5)
+        s -= 0.10
+    if dp.get("cto"):                                   # 社区接管 → dev 跑路风险被淡化，小幅正向（不硬托底压平维度）
+        s += 0.05
     return round(_clamp(s), 3)
 
 # dev 历史按 (chain, address) 缓存：dev 数据变化慢，TTL 内跨轮/多 tab 复用，避免每轮重拉烧配额。
