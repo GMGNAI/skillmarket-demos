@@ -25,6 +25,7 @@ app.py — GMGN AI Trader 本地后端 (FastAPI)
 
 from __future__ import annotations
 import json, os, re, subprocess, random, datetime, pathlib, threading, math, shlex, time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
@@ -76,6 +77,7 @@ CFG = {
     "dev_info_ttl_s": 600,
     "min_dev_score": 0.15,       # dev 评分过滤：低于此分（工厂号/连环换皮/喷币）直接砍，不进 LLM/待决策
     "dev_sec_scan_n": 3,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
+    "dev_fetch_workers": 8,      # dev 历史并发拉取线程数：冷缓存首轮把 24×(info+created+扫描) 串行 cli 改为并发，省掉「一直 loading」的长延时（subprocess 等待时释放 GIL）
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",
     "rank_weights": {
@@ -759,6 +761,18 @@ def get_dev_profile(g: GMGNAdapter, chain: str, addr: str) -> dict | None:
     _DEV_CACHE[key] = (now, dp)
     return dp
 
+def _fetch_dev_profiles(g: GMGNAdapter, chain: str, addrs: list[str]) -> dict[str, dict | None]:
+    """并发拉一组地址的 dev 历史，返回 {address: dev_profile|None}。
+    缓存命中走不到线程池（get_dev_profile 内 TTL 判断），故首轮冷缓存才真正并发打 cli；
+    单地址直接同步拉（不值当起线程）。workers 上限约束并发，避免对 gmgn-cli 配额造成尖峰。"""
+    uniq = list(dict.fromkeys(a for a in addrs if a))
+    if len(uniq) <= 1:
+        return {a: get_dev_profile(g, chain, a) for a in uniq}
+    workers = max(1, min(CFG["dev_fetch_workers"], len(uniq)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = ex.map(lambda a: (a, get_dev_profile(g, chain, a)), uniq)
+        return dict(results)
+
 # ──────────────────────────────────────────────────────────────────────────
 # 6. LLM 判断（只对幸存者；占位启发式，标注真实接入点）
 #    生产：resp = anthropic.messages.create(...); 喂 symbol_safe + 数值特征，绝不喂原始名。
@@ -998,9 +1012,14 @@ def screen_once(chain: str) -> dict:
     # STEP 4b dev 评估维度：只对排序靠前的 dev_pool_n 个额外查 dev 历史（带 TTL 缓存），
     # 算 dev 子分折进 priority_score 重排——dev 好的上浮、连环发币/删推/已清仓的下沉。
     pool = scored[:CFG["dev_pool_n"]]
+    # 并发拉 dev 历史：每个 dev 内含 info+created+逐币安全多次 cli、彼此独立，串行会让冷缓存首轮叠到上百次
+    # 子进程调用（→「一直 loading」）。线程池并发拉取（subprocess 等待时释放 GIL），评分/过滤仍按原序串行做，
+    # 保证 decisions 顺序与结果确定性不变。
+    feats = [f for _, f in pool]
+    profiles = _fetch_dev_profiles(g, chain, [f.address for f in feats])
     dev_ok = []
-    for _, f in pool:
-        f.dev = get_dev_profile(g, chain, f.address)
+    for f in feats:
+        f.dev = profiles.get(f.address)
         f.dev_eval = dev_score(f.dev)
         if f.dev_eval < CFG["min_dev_score"]:           # dev 评分过滤：工厂号/连环换皮/喷币 → 直接砍（不进 LLM/待决策）
             decisions.append(_reject(f, _dev_reject_reason(f), 3, None))
