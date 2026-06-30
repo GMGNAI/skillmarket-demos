@@ -223,13 +223,24 @@ class LiveGMGN(GMGNAdapter):
         self.env = {**os.environ, **load_env()}
         self._wallet_cache: dict[str, str] = {}   # chain -> bound wallet address
 
+    @staticmethod
+    def _check_code(resp):
+        # gmgn-cli 限流/配额/瞬时错误时常以 exit 0 + 业务码返回（code 非 0，且无 data/rank）。
+        # 不校验就会被下游静默当成「空热榜」→ 列表整页清空。显式抛错，让调用方走失败分支。
+        if isinstance(resp, dict):
+            code = resp.get("code")
+            if code not in (0, None):
+                msg = resp.get("msg") or resp.get("message") or resp.get("error") or ""
+                raise RuntimeError(f"gmgn-cli code={code} {msg}".strip())
+        return resp
+
     def _cli(self, *args) -> dict:
         cmd = ["gmgn-cli", *args, "--chain", self.chain, "--raw"]
         out = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=25, env=self.env)
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
-        return json.loads(out.stdout)
+        return self._check_code(json.loads(out.stdout))
 
     def _run_cmd(self, cmd_str: str) -> dict:
         """执行用户自定义的完整 gmgn-cli 命令（不经 shell，避免注入扩大）。"""
@@ -241,7 +252,7 @@ class LiveGMGN(GMGNAdapter):
         out = subprocess.run(parts, capture_output=True, text=True, timeout=25, env=self.env)
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
-        return json.loads(out.stdout)
+        return self._check_code(json.loads(out.stdout))
 
     def market_trending(self, cmd=None, interval="1h", orderby="volume", limit=100,
                         filters=("not_wash_trading",)):
@@ -254,8 +265,10 @@ class LiveGMGN(GMGNAdapter):
             for f in filters:
                 args += ["--filter", f]
             resp = self._cli(*args)
-        data = resp.get("data", resp)
-        return data.get("rank", data.get("tokens", []))
+        data = resp.get("data") or resp                 # data 可能为 null（错误payload）→ 回退到 resp
+        if not isinstance(data, dict):
+            return []
+        return data.get("rank") or data.get("tokens") or []
 
     def token_info(self, addr):
         return self._cli("token", "info", "--address", addr)
@@ -887,6 +900,7 @@ class AppState:
         self._adapters: dict[str, GMGNAdapter] = {}              # chain -> 适配器（缓存）
         self._mock = MockGMGN()                                  # 无 key 时所有链共用一个 Mock
         self._trending_cache: dict[str, tuple] = {}             # chain -> (monotonic_ts, rows)
+        self._trending_last_good: dict[str, list] = {}          # chain -> 最近一次非空热榜（限流/空榜兜底，列表不清空）
         self.risk = RiskManager()
         self.positions: list[dict] = []          # 每项含 entry 快照 + cycles + chain
         self.trending_cmds: dict[str, str] = load_trending_cmds()   # 按链热榜命令（落盘持久，重启不丢）
@@ -918,6 +932,7 @@ class AppState:
         self.live = True
         self._adapters.clear()
         self._trending_cache.clear()
+        self._trending_last_good.clear()              # 适配器换了(mock→live)，旧兜底作废
 
     def get_trending_cmd(self, chain: str) -> str:
         return self.trending_cmds.get(chain) or default_trending_cmd(chain)
@@ -930,15 +945,26 @@ class AppState:
         """重置该链热榜命令为默认（删除用户覆盖 + 作废缓存 + 落盘）。"""
         self.trending_cmds.pop(chain, None)
         self._trending_cache.pop(chain, None)
+        self._trending_last_good.pop(chain, None)     # 命令变了，旧兜底不能再沿用
         save_trending_cmds(self.trending_cmds)
 
     def trending_rows(self, chain: str) -> list:
-        """取某链热榜行：TTL 内复用缓存（同链多 tab 共享一次 cli），过期才真打 cli。"""
+        """取某链热榜行：TTL 内复用缓存（同链多 tab 共享一次 cli），过期才真打 cli。
+        瞬时拉取失败/空榜时回退到「最近一次非空结果」，避免一次限流就把整页清空。"""
         now = time.monotonic()
         hit = self._trending_cache.get(chain)
         if hit and (now - hit[0]) < TRENDING_CACHE_TTL:
             return hit[1]
-        rows = self.adapter_for(chain).market_trending(cmd=self.get_trending_cmd(chain))
+        try:
+            rows = self.adapter_for(chain).market_trending(cmd=self.get_trending_cmd(chain))
+        except Exception as e:
+            rows = []
+            log("TRENDING_FAIL", chain, f"热榜拉取失败：{e}")
+        if not rows and self._trending_last_good.get(chain):
+            log("TRENDING_STALE", chain, "本轮空榜/失败 → 沿用最近一次非空热榜，列表不清空")
+            rows = self._trending_last_good[chain]
+        elif rows:
+            self._trending_last_good[chain] = rows           # 仅缓存非空结果作为兜底
         self._trending_cache[chain] = (now, rows)
         return rows
 
@@ -1409,6 +1435,7 @@ def api_settings(s: SettingsIn):
                 raise HTTPException(400, "命令必须以 `gmgn-cli market trending` 开头")
             ST.set_trending_cmd(ch, cmd)         # set_trending_cmd 内已落盘
             ST._trending_cache.pop(ch, None)     # 命令变了，作废该链缓存
+            ST._trending_last_good.pop(ch, None) # 同时作废兜底，免得沿用旧命令的结果
     return dict(ok=True, trending_cmd=ST.get_trending_cmd(ch))
 
 @app.post("/api/settings/reset")
