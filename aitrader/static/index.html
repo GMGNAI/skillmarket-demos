@@ -159,7 +159,7 @@ td{padding:5px 10px;vertical-align:middle}
 .tip{position:fixed;z-index:200;max-width:340px;background:var(--panel2,#15150f);border:1px solid var(--line);color:var(--paper);font-family:var(--mono);font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 10px 28px #000b;pointer-events:none;opacity:0;transition:opacity .07s}
 .tip.on{opacity:1}
 .has-tip{cursor:help;text-decoration:underline dotted var(--dim2);text-underline-offset:3px}
-.m{font-weight:600}.m.bad{color:var(--clay)}.m.warn{color:var(--amber)}.m.good{color:var(--lime)}
+.m{font-weight:600}.m.bad{color:var(--clay)}.m.warn{color:var(--amber)}.m.good{color:var(--lime)}.m.dim{color:var(--dim2);font-weight:500}
 .vd{font-weight:700;font-size:10px;padding:3px 8px;border-radius:6px;letter-spacing:.04em}
 .vd.pass{color:var(--lime);background:#c8f24a14;border:1px solid #c8f24a40}
 .vd.watch{color:var(--amber);background:#f0a93b14;border:1px solid #f0a93b40}
@@ -1048,7 +1048,7 @@ function renderRows(){
       <td><span class="m ${t.bund>.30?'bad':''}">${P(t.bund)}</span></td>
       <td><span class="m ${t.dev>.10?'bad':''}">${P(t.dev)}</span></td>
       <td><span class="m ${t.top10>.40?'bad':''}">${P(t.top10)}</span></td>
-      <td><span class="m has-tip ${t.smc<1?'bad':''}" data-tip="${t2('smc_tip',t.degen,t.kol,t.smc)}">${t.degen}/${t.kol}</span></td>
+      <td><span class="m has-tip ${(Math.min(t.degen||0,t.kol||0)===0&&Math.max(t.degen||0,t.kol||0)<=2)?'dim':''}" data-tip="${t2('smc_tip',t.degen,t.kol,t.smc)}">${t.degen}/${t.kol}</span></td>
       <td>${devCell(t)}</td>
       <td><span class="m has-tip ${t.crowd==='late'?'bad':t.crowd==='crowded'?'warn':''}" data-tip="${t2('timing_label')+'　|　'+(I18N[lang]['crowdtip_'+t.crowd]?t2('crowdtip_'+t.crowd):t2('crowd_none_tip'))}">${I18N[lang]['crowd_'+t.crowd]?t2('crowd_'+t.crowd):t.crowd}</span></td>
       <td>${t.v==='-'?`<span class="has-tip" style="color:var(--dim2)" data-tip="${t2('llm_none_tip')}">—</span>`:`<span class="vd has-tip ${t.v}" data-tip="${t2('vd_tip',t.v.toUpperCase(),t2('llmtip_'+t.v)||'',(+t.conv).toFixed(2))}">${t.v.toUpperCase()}</span>`}</td>
