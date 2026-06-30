@@ -987,13 +987,17 @@ function passG(g){return T.filter(t=>t.died===null||t.died>g).length;}
 function killAt(g){return T.filter(t=>t.died===g).length;}
 function kpiData(){
   const act=T.filter(t=>t.status==='action').length;
-  const esc=POS.filter(p=>p.escaping).length;
+  // 本地后端首轮/刷新（loadingScreen）尚未拿到数据：持仓相关指标诚实显示 0，
+  // 别把 DEMO 种子持仓(POS=4 / 0.2857 SOL / RUGRUN 逃生)当成真实后端值闪给用户。
+  const nPos=loadingScreen?0:POS.length;
+  const esc=loadingScreen?0:POS.filter(p=>p.escaping).length;
+  const expo=loadingScreen?0:+RISK.expo;
   return [
     [t('kpi_scan'),'scan','var(--teal)',cycles*T.length,t('kpi_sub_scan',cycles)],
     [t('kpi_safety'),'shield','var(--lime)',passG(1),t('kpi_sub_block',killAt(1))],
     [t('kpi_consensus'),'users','var(--lime)',passG(2),t('kpi_sub_block',killAt(2))],
     [t('kpi_pending'),'target','var(--lime)',act,t('kpi_sub_pending')],
-    [t('kpi_pos'),'gauge','var(--lime)',POS.length+'<small>/'+RISK.openMax+'</small>',t('kpi_sub_expo',(+RISK.expo).toFixed(4))],
+    [t('kpi_pos'),'gauge','var(--lime)',nPos+'<small>/'+RISK.openMax+'</small>',t('kpi_sub_expo',expo.toFixed(4))],
     [t('kpi_escape'),'siren','var(--clay)',esc,esc?t('kpi_sub_escape_act'):t('kpi_sub_escape_ok')],
     [t('kpi_catch'),'target','var(--clay)','100%',t('kpi_catch_sub')],
   ];
@@ -1077,6 +1081,15 @@ function renderDetail(){
 function sevLevel(s){return s>=70?t('sev_escape'):s>=50?t('sev_high'):s>=30?t('sev_watch'):t('sev_stable');}
 function renderPositions(){
   const box=document.getElementById('positions');
+  if(loadingScreen){                       // 本地后端首轮/刷新：右侧也走骨架，别闪 Demo 假持仓
+    document.getElementById('escCnt').textContent='';
+    box.innerHTML=Array.from({length:3},()=>
+      '<div class="pos"><div class="top"><div class="skel-bar" style="width:64px"></div>'
+      +'<div class="skel-bar" style="width:46px;margin-left:auto"></div></div>'
+      +'<div class="skel-bar" style="height:7px"></div>'
+      +'<div class="skel-bar" style="width:80%;height:11px"></div></div>').join('');
+    return;
+  }
   const alerts=POS.filter(p=>p.escaping).length;
   document.getElementById('escCnt').textContent=POS.length?t('esc_cnt',POS.length,RISK.openMax,alerts):'';
   if(!POS.length){box.innerHTML=`<div class="posempty">${t('pos_empty')}</div>`;return;}
