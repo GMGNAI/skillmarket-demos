@@ -132,6 +132,22 @@ td{padding:5px 10px;vertical-align:middle}
 .xbtn{width:20px;height:20px;border-radius:6px;border:1px solid var(--line);background:transparent;color:var(--dim2);cursor:pointer;font-size:13px;line-height:1;display:grid;place-items:center;flex-shrink:0;transition:.12s}
 .xbtn:hover{border-color:var(--clay);color:var(--clay)}
 .inj{display:inline-flex;align-items:center;gap:3px;color:var(--amber);font-size:8px;font-weight:600;margin-left:5px;border:1px solid #f0a93b44;background:#f0a93b14;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
+.reskin{display:inline-flex;align-items:center;color:var(--clay);font-size:8px;font-weight:600;margin-left:4px;border:1px solid var(--clay);background:#c8503714;border-radius:4px;padding:1px 4px;vertical-align:middle;cursor:help}
+.devcard{border:1px solid var(--line);border-radius:7px;padding:6px 10px;margin-bottom:7px;background:#ffffff05}
+.devcard.good{border-color:#a3e63540;background:#a3e6350d}.devcard.mid{border-color:#f0a93b40;background:#f0a93b0a}.devcard.bad{border-color:#c8503750;background:#c8503710}
+.devcard .dctop{display:flex;align-items:baseline;gap:6px}
+.devcard .dcscore{font-size:17px;font-weight:700;line-height:1;color:var(--lime)}
+.devcard.mid .dcscore{color:var(--amber)}.devcard.bad .dcscore{color:var(--clay)}
+.devcard .dcscore small{font-size:9px;font-weight:400;color:var(--dim2)}
+.devcard .dclbl{color:var(--dim);font-size:9px;letter-spacing:.05em}
+.devcard .dctrust{margin-left:auto;font-size:10px;font-weight:600;color:var(--lime)}
+.devcard.bad .dctrust{color:var(--clay)}.devcard.mid .dctrust{color:var(--amber)}
+.devcard .dcstats{display:flex;flex-wrap:wrap;gap:3px 14px;margin-top:5px;font-size:11px;font-weight:600}
+.devcard .dcstats i{font-style:normal;color:var(--dim2);font-weight:400;margin-right:4px;font-size:9px;letter-spacing:.03em}
+.devcard .dcstats em{font-style:normal;color:var(--dim);font-weight:400}
+.devcard .dcstats .bad{color:var(--clay)}.devcard .dcstats .good{color:var(--lime)}
+.devcard .dcinner{color:var(--clay);font-size:9px;font-weight:500;cursor:help;margin-left:4px}
+.devcard .dcrisk{margin-top:5px;padding-top:5px;border-top:1px solid var(--line);color:var(--clay);font-size:10px;font-weight:600}
 .gates{display:flex;gap:4px}
 .pip{width:23px;height:23px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--line);background:var(--ink);color:var(--dim2)}
 .pip svg{width:11px;height:11px}
@@ -143,7 +159,7 @@ td{padding:5px 10px;vertical-align:middle}
 .tip{position:fixed;z-index:200;max-width:340px;background:var(--panel2,#15150f);border:1px solid var(--line);color:var(--paper);font-family:var(--mono);font-size:11px;line-height:1.55;padding:8px 11px;border-radius:8px;box-shadow:0 10px 28px #000b;pointer-events:none;opacity:0;transition:opacity .07s}
 .tip.on{opacity:1}
 .has-tip{cursor:help;text-decoration:underline dotted var(--dim2);text-underline-offset:3px}
-.m{font-weight:600}.m.bad{color:var(--clay)}.m.warn{color:var(--amber)}
+.m{font-weight:600}.m.bad{color:var(--clay)}.m.warn{color:var(--amber)}.m.good{color:var(--lime)}.m.dim{color:var(--dim2);font-weight:500}
 .vd{font-weight:700;font-size:10px;padding:3px 8px;border-radius:6px;letter-spacing:.04em}
 .vd.pass{color:var(--lime);background:#c8f24a14;border:1px solid #c8f24a40}
 .vd.watch{color:var(--amber);background:#f0a93b14;border:1px solid #f0a93b40}
@@ -308,7 +324,7 @@ td{padding:5px 10px;vertical-align:middle}
         <div class="body">
           <table>
             <thead><tr>
-              <th><span data-i18n="th_token">TOKEN</span> <span class="tokf" id="tokFilter"></span></th><th data-i18n="th_pipe">规则→排序→LLM</th><th data-i18n="th_safe">安全</th><th>BUND</th><th>DEV</th><th>T10</th><th data-i18n="th_smart">聪明钱/KOL</th><th data-i18n="th_timing">时机</th><th>LLM</th><th data-i18n="th_pri">优先级</th><th data-i18n="th_dec">决策</th>
+              <th><span data-i18n="th_token">TOKEN</span> <span class="tokf" id="tokFilter"></span></th><th data-i18n="th_pipe">规则→排序→LLM</th><th data-i18n="th_safe">安全</th><th data-i18n="th_bund">捆绑</th><th data-i18n="th_dev">DEV</th><th data-i18n="th_t10">前10</th><th data-i18n="th_smart">聪明钱/KOL</th><th data-i18n="th_devhist">DEV史</th><th data-i18n="th_timing">时机</th><th>LLM</th><th data-i18n="th_pri">优先级</th><th data-i18n="th_dec">决策</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -408,7 +424,7 @@ const I18N={
     amt_title:'买入数量（原生代币），改这里下面所有买入按钮同步',
     amt_lbl:'买入',
     pipegear_title:'热榜命令 / 轮询间隔',
-    th_token:'TOKEN', th_pipe:'规则→排序→LLM', th_safe:'安全', th_smart:'聪明钱/KOL', th_timing:'时机', th_pri:'优先级', th_dec:'决策',
+    th_token:'TOKEN', th_pipe:'规则→排序→LLM', th_safe:'安全', th_bund:'捆绑', th_dev:'DEV', th_t10:'前10', th_smart:'聪明钱/KOL', th_devhist:'DEV评分', th_timing:'时机', th_pri:'优先级', th_dec:'决策',
     log_h3:'实时决策日志 · trade_decisions.jsonl',
     logtog_title:'展开 / 收起',
     esc_h3:'持仓逃生监控',
@@ -457,6 +473,17 @@ const I18N={
     llmtip_pass:'通过：动能向上、买盘占优，纳入待决策', llmtip_watch:'观望：动能/买盘不够强，未达买入线', llmtip_reject:'否决：阴跌或不符合趋势条件',
     llm_none_tip:'LLM 阶段　|　未进入 LLM（更早的闸门已筛掉）',
     smc_tip:(degen,kol,smc)=>`聪明钱/KOL　|　${degen} 个聪明钱(smart_degen) / ${kol} 个知名KOL(renowned)，合计 ${smc}`,
+    dev_good:'优质', dev_mid:'中性', dev_weak:'弱',
+    reskin_tag:'换皮', reskin_tip:'换皮重发：该 dev 在「自己发的多个币」里复用同一张 logo（同套路反复重发）。只看 dev 自己的发币历史，排除"别人盗图发新币"误伤；不采信推特改名（项目方随填）',
+    dev_rep_label:'Dev 信誉分', dev_trust:'可信 ✓', dev_distrust:'不可信 ⛔',
+    dev_k_launches:'历史发币', dev_k_rug:'rug 次数', dev_k_alive:'存活', dev_k_inner:'内盘沉底', dev_k_reskin:'换皮重发',
+    dev_reskin_yes:'检出 ⚠', dev_reskin_no:'未检出 ✓',
+    dev_sec_warn:(unsafe,checked,risks)=>`⚠ 近 ${checked} 个发币里 ${unsafe} 个不安全：${risks}`,
+    dev_inner_tip:'一直卡在内盘(bonding curve)、从未打满开外盘的币数；海量内盘沉底 = 批量发币工厂号',
+    rs_dev_factory:'Dev 信誉低（评分 6/100：内盘沉底 600 · 开外盘率 2%）—— 批量发币工厂号',
+    rs_dev_reskin:'Dev 信誉低（评分 0/100：内盘沉底 2000 · 开外盘率 1% · 换皮重发）',
+    devhist_none:'DEV 历史评估　|　未评估（仅对排序靠前的少数幸存者查 dev 历史；本币止步前关或不在评估池）',
+    devhist_tip:(score,open,ath,exited,reskin,rug)=>`DEV 信誉评估（排序子分 + 过滤）　|　评分 ${score}/100　·　历史发币 ${open} 个　·　rug率 ${rug}%　·　历史最佳市值 ${ath}　·　${exited?'已清仓本币':'仍持有本币'}　·　换皮重发 ${reskin?'检出 ⚠':'未检出 ✓'}\n数据源：portfolio created-tokens 查 dev 钱包发币历史 + 逐币安全扫描(token security)。主分=存活率；内盘沉底/发不安全币/换皮/已清仓减分。点该行看右下角 Dev 信誉卡`,
     vd_tip:(V,desc,conv)=>`LLM 判定 ${V}　|　${desc}（置信度 ${conv}）`,
     rb_safety:'避雷', rb_cons:'共识', rb_nopass:'未通过该闸门',
     rb_tip:(gate,reason)=>`阵亡于「${gate}」门　|　${reason}`,
@@ -470,10 +497,11 @@ const I18N={
     age_title:'创建至今', age_title_fresh:'创建至今 · 1h 内新币',
     empty_onlyheld:'当前无持仓的币在筛选结果中',
     empty_none:'暂无候选 · 切到「本地后端」或调整热榜命令',
-    detail_passed:(pri,size,warn)=>`通过全部闸门 · 优先级 ${pri} · 仓位由代码算 ${size} SOL${warn?' · ⚠ 买入将触及风控上限':''}`,
+    detail_riskwarn:'⚠ 买入将触及风控上限（仅提示，不阻断）',
     detail_exit:(exit)=>`退出预案：${exit}`,
     detail_died_lab:(gate)=>`阵亡于「${gate}」门`,
     detail_filtered:'已过滤',
+    detail_dev:(score,ath,open,exited,reskin)=>`DEV 历史评估：${score}/100　·　历史最佳市值 ${ath}　·　历史发币 ${open} 次　·　${exited?'已清仓本币':'仍持有本币'}${reskin?'　·　换皮重发 ⚠':''}（作排序子分）`,
     detail_no_llm:'未进入 LLM',
     detail_llm_note:(s)=>`LLM 仅对幸存者解释（${s}）；是否成交由你按下。`,
     sev_escape:'逃生信号', sev_high:'高风险', sev_watch:'留意', sev_stable:'平稳',
@@ -556,7 +584,7 @@ const I18N={
     amt_title:'Buy amount (native token); changing it syncs every buy button below',
     amt_lbl:'BUY',
     pipegear_title:'Trending command / poll interval',
-    th_token:'TOKEN', th_pipe:'RULE→RANK→LLM', th_safe:'SAFE', th_smart:'SMART/KOL', th_timing:'TIMING', th_pri:'PRIORITY', th_dec:'DECISION',
+    th_token:'TOKEN', th_pipe:'RULE→RANK→LLM', th_safe:'SAFE', th_bund:'BUND', th_dev:'DEV', th_t10:'T10', th_smart:'SMART/KOL', th_devhist:'DEV Score', th_timing:'TIMING', th_pri:'PRIORITY', th_dec:'DECISION',
     log_h3:'Live Decision Log · trade_decisions.jsonl',
     logtog_title:'Expand / collapse',
     esc_h3:'Position Escape Monitor',
@@ -605,6 +633,17 @@ const I18N={
     llmtip_pass:'Pass: momentum up, buyers dominant—added to pending', llmtip_watch:'Watch: momentum/buying not strong enough, below buy line', llmtip_reject:'Reject: fading or fails trend conditions',
     llm_none_tip:'LLM stage　|　did not reach the LLM (cut by an earlier gate)',
     smc_tip:(degen,kol,smc)=>`Smart money/KOL　|　${degen} smart_degen / ${kol} renowned KOL, total ${smc}`,
+    dev_good:'GOOD', dev_mid:'OK', dev_weak:'WEAK',
+    reskin_tag:'RESKIN', reskin_tip:'Reskin re-launch: this dev reuses the same logo across their OWN multiple tokens (relaunching the same playbook). Only the dev\'s own launch history counts — excludes others stealing the image; twitter renames not used',
+    dev_rep_label:'Dev reputation', dev_trust:'trusted ✓', dev_distrust:'untrusted ⛔',
+    dev_k_launches:'launched', dev_k_rug:'rugged', dev_k_alive:'alive', dev_k_inner:'stuck inner', dev_k_reskin:'reskin',
+    dev_reskin_yes:'detected ⚠', dev_reskin_no:'none ✓',
+    dev_sec_warn:(unsafe,checked,risks)=>`⚠ ${unsafe}/${checked} recent launches unsafe: ${risks}`,
+    dev_inner_tip:'tokens stuck in the bonding curve (inner pool) that never filled to graduate to an outer pool; mass inner-pool dust = token factory',
+    rs_dev_factory:'Low dev reputation (6/100: 600 stuck inner · 2% graduation) — token factory',
+    rs_dev_reskin:'Low dev reputation (0/100: 2000 stuck inner · 1% graduation · reskin)',
+    devhist_none:'Dev reputation　|　not evaluated (dev history is queried only for the top few survivors; this token was cut earlier or is outside the eval pool)',
+    devhist_tip:(score,open,ath,exited,reskin,rug)=>`Dev reputation (ranking sub-score + filter)　|　score ${score}/100　·　${open} launched　·　rug ${rug}%　·　best prior mcap ${ath}　·　${exited?'exited this token':'still holding'}　·　reskin ${reskin?'detected ⚠':'none ✓'}\nsource: portfolio created-tokens (dev wallet launch history) + per-token security scan (token security). Main score = survival rate; stuck-inner / unsafe launches / reskin / exited subtract. Click the row for the full Dev card (bottom-right)`,
     vd_tip:(V,desc,conv)=>`LLM verdict ${V}　|　${desc} (confidence ${conv})`,
     rb_safety:'SAFE', rb_cons:'CONS', rb_nopass:'did not pass this gate',
     rb_tip:(gate,reason)=>`Eliminated at the “${gate}” gate　|　${reason}`,
@@ -618,10 +657,11 @@ const I18N={
     age_title:'Age since creation', age_title_fresh:'Age since creation · new within 1h',
     empty_onlyheld:'No held tokens are in the current results',
     empty_none:'No candidates · switch to “Local backend” or adjust the trending command',
-    detail_passed:(pri,size,warn)=>`Passed all gates · priority ${pri} · size computed ${size} SOL${warn?' · ⚠ buy will hit the risk cap':''}`,
+    detail_riskwarn:'⚠ buy will hit the risk cap (warning only, not blocking)',
     detail_exit:(exit)=>`Exit plan: ${exit}`,
     detail_died_lab:(gate)=>`Eliminated at the “${gate}” gate`,
     detail_filtered:'Filtered out',
+    detail_dev:(score,ath,open,exited,reskin)=>`Dev reputation: ${score}/100　·　best prior token mcap ${ath}　·　${open} tokens launched　·　${exited?'exited this token':'still holding'}${reskin?'　·　reskin re-launch ⚠':''} (ranking sub-score)`,
     detail_no_llm:'did not reach LLM',
     detail_llm_note:(s)=>`LLM only explains survivors (${s}); you press to trade.`,
     sev_escape:'ESCAPE', sev_high:'High risk', sev_watch:'Watch', sev_stable:'Stable',
@@ -773,6 +813,38 @@ function switchChain(ch){
 /* CA 缩写：前 5 … 后 4；GMGN 代币页链接 */
 const shortCA=a=>a?(a.length>11?a.slice(0,5)+'…'+a.slice(-4):a):'';
 const fmtPrice=v=>{if(!v)return '';const n=Number(v);return '$'+(n>=1?n.toFixed(4):n.toPrecision(3));};
+const fmtMc=v=>{const n=Number(v)||0;if(n<=0)return '—';if(n>=1e9)return '$'+(n/1e9).toFixed(1)+'B';if(n>=1e6)return '$'+(n/1e6).toFixed(1)+'M';if(n>=1e3)return '$'+(n/1e3).toFixed(0)+'k';return '$'+n.toFixed(0);};
+/* DEV史 列：dev 历史评估（排序子分）。score 0..1 → 标签+0..100 分；hover 出历史最佳市值/发币次数/是否清仓。
+   仅对排序靠前的幸存者评估过（其余为 null）→ 显示 — */
+function devCell(t){
+  if(t.devScore==null) return `<span class="m has-tip" style="color:var(--dim2)" data-tip="${t2('devhist_none')}">—</span>`;
+  const s=t.devScore, sc=Math.round(s*100);
+  const lbl=s>=0.7?t2('dev_good'):s>=0.45?t2('dev_mid'):t2('dev_weak');
+  const cls=s>=0.7?'good':s<0.45?'bad':'';
+  const reskin=t.devReskin?`<span class="reskin" data-tip="${t2('reskin_tip')}">${t2('reskin_tag')}</span>`:'';
+  return `<span class="m has-tip ${cls}" data-tip="${t2('devhist_tip',sc,t.devLaunches??'?',fmtMc(t.devAth),t.devExited,t.devReskin,t.devRugRate==null?'?':Math.round(t.devRugRate*100))}">${lbl} ${sc}</span>${reskin}`;
+}
+/* Dev 信誉卡（点击代币行 → 右下角详情）：复刻 demo 的「信誉分 + 历史发币/rug/存活/换皮重发」。
+   数据来自 portfolio created-tokens 查 dev 钱包发币历史。devScore==null（未评估）则不渲染卡。 */
+function devCard(r){
+  if(r.devScore==null) return '';
+  const sc=Math.round(r.devScore*100);
+  const cls=r.devScore>=0.7?'good':r.devScore<0.45?'bad':'mid';
+  const trust=r.devScore>=0.45?t('dev_trust'):t('dev_distrust');
+  const launches=r.devLaunches??'?';
+  const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` <em>(${Math.round(r.devRugRate*100)}%)</em>`;
+  const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner has-tip" data-tip="${t('dev_inner_tip')}">+${r.devInner}</span>`:'';
+  // 安全扫描风险行（仅在最近发币里检出不安全时显示）
+  const sec=(r.devSecUnsafe>0)?`<div class="dcrisk">${t('dev_sec_warn',r.devSecUnsafe,r.devSecChecked,(r.devSecRisks||[]).join(' · '))}</div>`:'';
+  return `<div class="devcard ${cls}">
+    <div class="dctop"><span class="dcscore">${sc}<small>/100</small></span><span class="dclbl">${t('dev_rep_label')}</span><span class="dctrust">${trust}</span></div>
+    <div class="dcstats">
+      <span><i>${t('dev_k_launches')}</i>${launches}${inner}</span>
+      <span class="${rugN>0?'bad':'good'}"><i>${t('dev_k_rug')}</i>${rugN}${rugPct}</span>
+      <span><i>${t('dev_k_alive')}</i>${r.devAlive??'?'}</span>
+      <span class="${r.devReskin?'bad':'good'}"><i>${t('dev_k_reskin')}</i>${r.devReskin?t('dev_reskin_yes'):t('dev_reskin_no')}</span>
+    </div>${sec}</div>`;
+}
 /* 创建至今多久，只显示最大单位：d 天 / h 小时 / m 分钟 / s 秒（age 单位=分钟）*/
 function fmtAge(min){
   if(min==null||isNaN(min))return '';
@@ -825,10 +897,10 @@ const COL={ACTION:'var(--lime)',WARN:'var(--amber)',SKIP:'var(--clay)',BLOCK:'va
 /* 与后端 priority_score 同构：共识计数亚线性压缩，无合成安全分 */
 function priCalc(t){const c=Math.min(28,9*Math.log10(1+(t.smc||0)));let s=t.conv*38+c+(1-Math.min(t.top10||0,1))*14+((t.ren)?6:0)+(t.crowd==='early'?10:t.crowd==='late'?-15:0);return Math.max(0,Math.min(99,Math.round(s)));}
 const SEED=[
- {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,exitK:'exit_full',thesisK:'th_cleancat'},
- {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'pass',conv:.81,status:'action',size:0.2857,died:null,exitK:'exit_full',thesisK:'th_gooddog'},
- {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,exitK:'exit_ladder',thesisK:'th_basepepe'},
- {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'reject',conv:.55,status:'reject',died:4,reasonK:'rs_latemoon'},
+ {sym:'CLEANCAT',address:'7Hx9pQ2mKvR3tWn4bYj6cLwZ8sFgUaXpBn5dMfTqVrJk',age:42,hp:false,ren:true,bund:.04,dev:.03,top10:.22,smc:64,degen:48,kol:16,crowd:'early',v:'pass',conv:.95,status:'action',size:0.2857,died:null,devScore:.94,devLaunches:5,devInner:5,devSurv:1.0,devAlive:5,devRugged:0,devRugRate:0,devExited:false,devReskin:false,exitK:'exit_full',thesisK:'th_cleancat'},
+ {sym:'GOODDOG',address:'4nQ1dFgUaXpBn8dMfTqVrJkH2x9pQ7mKvR3tWn6bYj5cd',age:51,hp:false,ren:true,bund:.05,dev:.02,top10:.25,smc:12,degen:9,kol:3,crowd:'early',v:'-',conv:0,status:'reject',died:3,devScore:.06,devLaunches:140,devInner:600,devSurv:.02,devAlive:3,devRugged:137,devRugRate:.98,devSecUnsafe:1,devSecChecked:3,devSecRisks:['可增发'],devExited:false,devReskin:false,reasonK:'rs_dev_factory'},
+ {sym:'BASEPEPE',address:'9bYj6cLwZ3sFgUaXpBn8dMfTqVrJkHx2pQ4mKvR7tWnPb',age:60,hp:false,ren:true,bund:.07,dev:.03,top10:.30,smc:6,degen:5,kol:1,crowd:'early',v:'pass',conv:.81,status:'action',warn:true,size:0.2857,died:null,devScore:.45,devLaunches:12,devInner:15,devSurv:.55,devAlive:7,devRugged:5,devRugRate:.45,devExited:true,devReskin:false,exitK:'exit_ladder',thesisK:'th_basepepe'},
+ {sym:'LATEMOON',address:'2MfTqVrJkHx9pQ3mKvR7tWn4bYj6cLwZ8sFgUaXpBn5dz',age:900,hp:false,ren:true,bund:.06,dev:.04,top10:.28,smc:14,degen:11,kol:3,crowd:'late',v:'-',conv:0,status:'reject',died:3,devScore:.0,devLaunches:180,devInner:2000,devSurv:.01,devAlive:2,devRugged:178,devRugRate:.99,devSecUnsafe:2,devSecChecked:3,devSecRisks:['可增发'],devExited:false,devReskin:true,reasonK:'rs_dev_reskin'},
  {sym:'BUNDLED',address:'5sFgUaXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ3yQ',age:33,hp:false,ren:true,bund:.41,dev:.25,top10:.55,smc:8,degen:6,kol:2,crowd:'early',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_bundled'},
  {sym:'RUGPULL',address:'8vR7tWn4bYj6cLwZ3sFgUaXpBn2dMfTqVrJkHx9pQ5mKzR',age:15,hp:true,ren:false,bund:.22,dev:.18,top10:.61,smc:1,degen:1,kol:0,crowd:'crowded',v:'-',conv:0,status:'reject',died:1,reasonK:'rs_rugpull'},
  {sym:'INJECT',inj:true,address:'3aXpBn8dMfTqVrJkHx9pQ2mKvR7tWn4bYj6cLwZ5sFgUwH',age:20,hp:false,ren:true,bund:.09,dev:.05,top10:.33,smc:0,degen:0,kol:0,crowd:'early',v:'-',conv:0,status:'reject',died:2,reasonK:'rs_inject'},
@@ -872,6 +944,7 @@ function normalize(data){
       hp:!!f.honeypot,ren:(f.renounced!==undefined?!!f.renounced:!!f.renounced_mint),
       bund:f.bundler||0,dev:f.dev_hold||0,top10:f.top10||0,
       smc:f.sm_confluence||0,degen:f.smart_degen||0,kol:f.renowned||0,age:f.age_min,crowd:v.crowdedness||'-',
+      devScore:(f.dev_score==null?null:f.dev_score),devLaunches:(f.dev_launches==null?null:f.dev_launches),devAlive:(f.dev_alive==null?null:f.dev_alive),devRugged:(f.dev_rugged==null?null:f.dev_rugged),devRugRate:(f.dev_rug_rate==null?null:f.dev_rug_rate),devInner:(f.dev_inner_count==null?null:f.dev_inner_count),devSurv:(f.dev_survival==null?null:f.dev_survival),devSecUnsafe:(f.dev_sec_unsafe==null?null:f.dev_sec_unsafe),devSecChecked:(f.dev_sec_checked==null?null:f.dev_sec_checked),devSecRisks:(f.dev_sec_risks||[]),devAth:(f.dev_ath_mc==null?0:f.dev_ath_mc),devExited:!!f.dev_exited,devReskin:!!f.dev_reskin,
       v:v.verdict||'-',conv:v.conviction||0,status:isAct?'action':'reject',
       warn:!!dec.risk_warn,size:dec.size_sol||0,died:deriveDied(dec.action,dec.reason),
       reason:dec.reason,address:dec.address,
@@ -914,13 +987,17 @@ function passG(g){return T.filter(t=>t.died===null||t.died>g).length;}
 function killAt(g){return T.filter(t=>t.died===g).length;}
 function kpiData(){
   const act=T.filter(t=>t.status==='action').length;
-  const esc=POS.filter(p=>p.escaping).length;
+  // 本地后端首轮/刷新（loadingScreen）尚未拿到数据：持仓相关指标诚实显示 0，
+  // 别把 DEMO 种子持仓(POS=4 / 0.2857 SOL / RUGRUN 逃生)当成真实后端值闪给用户。
+  const nPos=loadingScreen?0:POS.length;
+  const esc=loadingScreen?0:POS.filter(p=>p.escaping).length;
+  const expo=loadingScreen?0:+RISK.expo;
   return [
     [t('kpi_scan'),'scan','var(--teal)',cycles*T.length,t('kpi_sub_scan',cycles)],
     [t('kpi_safety'),'shield','var(--lime)',passG(1),t('kpi_sub_block',killAt(1))],
     [t('kpi_consensus'),'users','var(--lime)',passG(2),t('kpi_sub_block',killAt(2))],
     [t('kpi_pending'),'target','var(--lime)',act,t('kpi_sub_pending')],
-    [t('kpi_pos'),'gauge','var(--lime)',POS.length+'<small>/'+RISK.openMax+'</small>',t('kpi_sub_expo',(+RISK.expo).toFixed(4))],
+    [t('kpi_pos'),'gauge','var(--lime)',nPos+'<small>/'+RISK.openMax+'</small>',t('kpi_sub_expo',expo.toFixed(4))],
     [t('kpi_escape'),'siren','var(--clay)',esc,esc?t('kpi_sub_escape_act'):t('kpi_sub_escape_ok')],
     [t('kpi_catch'),'target','var(--clay)','100%',t('kpi_catch_sub')],
   ];
@@ -943,9 +1020,9 @@ function renderRows(){
   const box=document.getElementById('rows');
   if(!rows.length){
     if(loadingScreen){
-      box.innerHTML=Array.from({length:6},()=>'<tr class="skelrow"><td colspan="11"><div class="skel-bar"></div></td></tr>').join('');
+      box.innerHTML=Array.from({length:6},()=>'<tr class="skelrow"><td colspan="12"><div class="skel-bar"></div></td></tr>').join('');
     }else{
-      box.innerHTML='<tr><td colspan="11" style="padding:26px;text-align:center;color:var(--dim2)">'+(onlyHeld?t('empty_onlyheld'):t('empty_none'))+'</td></tr>';
+      box.innerHTML='<tr><td colspan="12" style="padding:26px;text-align:center;color:var(--dim2)">'+(onlyHeld?t('empty_onlyheld'):t('empty_none'))+'</td></tr>';
     }
     return;
   }
@@ -971,7 +1048,8 @@ function renderRows(){
       <td><span class="m ${t.bund>.30?'bad':''}">${P(t.bund)}</span></td>
       <td><span class="m ${t.dev>.10?'bad':''}">${P(t.dev)}</span></td>
       <td><span class="m ${t.top10>.40?'bad':''}">${P(t.top10)}</span></td>
-      <td><span class="m has-tip ${t.smc<1?'bad':''}" data-tip="${t2('smc_tip',t.degen,t.kol,t.smc)}">${t.degen}/${t.kol}</span></td>
+      <td><span class="m has-tip ${(Math.min(t.degen||0,t.kol||0)===0&&Math.max(t.degen||0,t.kol||0)<=2)?'dim':''}" data-tip="${t2('smc_tip',t.degen,t.kol,t.smc)}">${t.degen}/${t.kol}</span></td>
+      <td>${devCell(t)}</td>
       <td><span class="m has-tip ${t.crowd==='late'?'bad':t.crowd==='crowded'?'warn':''}" data-tip="${t2('timing_label')+'　|　'+(I18N[lang]['crowdtip_'+t.crowd]?t2('crowdtip_'+t.crowd):t2('crowd_none_tip'))}">${I18N[lang]['crowd_'+t.crowd]?t2('crowd_'+t.crowd):t.crowd}</span></td>
       <td>${t.v==='-'?`<span class="has-tip" style="color:var(--dim2)" data-tip="${t2('llm_none_tip')}">—</span>`:`<span class="vd has-tip ${t.v}" data-tip="${t2('vd_tip',t.v.toUpperCase(),t2('llmtip_'+t.v)||'',(+t.conv).toFixed(2))}">${t.v.toUpperCase()}</span>`}</td>
       <td>${t.status==='action'?`<span class="pri ${priCls}">${t.pri}<small>${t2('pri_label')}</small></span>`:'<span style="color:var(--dim2)">—</span>'}</td>
@@ -985,8 +1063,8 @@ function renderDetail(){
   const r=(sel>=0?T[sel]:null); if(!r){document.getElementById('detail').innerHTML='';return;}
   let right;
   if(r.status==='action'){
-    right=`<div class="lab">${t('detail_passed',r.pri,r.size,r.warn)}</div>
-      <span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
+    const warnNote=r.warn?`<div class="lab" style="color:var(--amber);letter-spacing:0;margin-bottom:5px">${t('detail_riskwarn')}</div>`:'';
+    right=`${warnNote}<span class="lime">${thesisOf(r)}</span><div style="margin-top:6px;color:var(--dim);font-size:10.5px">${t('detail_exit',exitOf(r))}</div>`;
   }else{
     right=`<div class="lab">${t('detail_died_lab',gateName(r.died))}</div><span class="clay">${reasonOf(r)}</span>`;
   }
@@ -996,13 +1074,22 @@ function renderDetail(){
   const llmState=(r.v==='-'?t('detail_no_llm'):r.v.toUpperCase()+' · conv '+(+r.conv).toFixed(2));
   document.getElementById('detail').innerHTML=`
     <div class="dl"><h4>${r.sym}</h4><br>${action}</div>
-    <div class="dr">${right}<div style="margin-top:8px;color:var(--dim);font-size:10.5px">${t('detail_llm_note',llmState)}</div></div>`;
+    <div class="dr">${devCard(r)}${right}<div style="margin-top:8px;color:var(--dim);font-size:10.5px">${t('detail_llm_note',llmState)}</div></div>`;
 }
 
 /* ── escape monitor ── */
 function sevLevel(s){return s>=70?t('sev_escape'):s>=50?t('sev_high'):s>=30?t('sev_watch'):t('sev_stable');}
 function renderPositions(){
   const box=document.getElementById('positions');
+  if(loadingScreen){                       // 本地后端首轮/刷新：右侧也走骨架，别闪 Demo 假持仓
+    document.getElementById('escCnt').textContent='';
+    box.innerHTML=Array.from({length:3},()=>
+      '<div class="pos"><div class="top"><div class="skel-bar" style="width:64px"></div>'
+      +'<div class="skel-bar" style="width:46px;margin-left:auto"></div></div>'
+      +'<div class="skel-bar" style="height:7px"></div>'
+      +'<div class="skel-bar" style="width:80%;height:11px"></div></div>').join('');
+    return;
+  }
   const alerts=POS.filter(p=>p.escaping).length;
   document.getElementById('escCnt').textContent=POS.length?t('esc_cnt',POS.length,RISK.openMax,alerts):'';
   if(!POS.length){box.innerHTML=`<div class="posempty">${t('pos_empty')}</div>`;return;}

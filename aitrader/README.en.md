@@ -7,6 +7,18 @@ A separate position escape monitor flags rug signals and prompts a one-click exi
 
 > Full design / API contract / current progress live in [SPEC.en.md](SPEC.en.md). This file only covers how to run it.
 
+## What it does
+
+- **Screening pipeline**: `market trending` pulls trending candidates (rows already carry due-diligence fields, zero extra cli) → **deterministic hard gates** avoid landmines (honeypot / buy-sell tax / rug / bundler / dev holding / top-10 concentration) + consensus (smart-money / KOL counts) → **trend-momentum scoring & ranking** (5m/1h momentum · buy pressure · turnover · consensus · safety · dev) → **the LLM only explains the survivors** (verdict / conviction / crowdedness / thesis) → produces candidates with code-computed sizing.
+- **Dev evaluation dimension**: for the top-ranked candidates it queries the dev wallet's launch history (`portfolio created-tokens`) + a per-token security scan of the latest N launches (`token security`), and computes a dev reputation score — **driven by per-token survival rate** minus penalties for stuck-inner-curve spam / launching unsafe tokens (mintable / freeze-not-renounced / not-open-source / honeypot) / logo-reskin re-launches / having exited the token. It's both a **ranking sub-score** and a **filter gate**: serial-rug token factories and reskin devs are cut outright (not merely down-ranked). The frontend has a `DEV Score` column + a "Dev reputation card" on row click (launch history / rug rate / survival / reskin / security risks).
+- **Position escape monitor**: a safety snapshot is taken at entry and diff-rechecked each cycle (honeypot / renounce / top-10 concentration); once it degrades past the threshold an "exit now" prompt pops. Strictly separated from screening/risk-control — the LLM never touches the escape path.
+- **One-click buy / sell (human-in-the-loop)**: candidates that clear every gate land in "awaiting your decision"; a trade happens only when you click. A buy polls to confirm the real fill — on failure it records no position and does not lie; the fill carries a tx hash.
+- **LIVE / SHADOW**: one-click toggle (with second confirmation) between SHADOW (paper, default safe state, log-only) and LIVE (real funds, irreversible); the `LIVE_TRADING_DISABLED` master switch at the top of `app.py` can seal off all on-chain writes instantly.
+- **Multi-chain**: SOL / BSC / Base / ETH switched per-request, with per-chain adapter cache + short-cached trending and per-chain command/buy-unit memory; multiple tabs each hold their own chain without interfering.
+- **Persistence / isolation**: positions persist to disk (`positions.json`, survive restart) + per-chain isolation; every decision is appended to `trade_decisions.jsonl` (SCREEN/FILTER/BUY/SELL/UNMONITOR).
+- **Runs without a key**: the built-in `MockGMGN` adapter synthesizes isomorphic data, so you can fully demo/integrate without gmgn-cli or a key; with a key configured it switches to real market data on startup.
+- **GitHub Pages demo mode**: off localhost and with the backend unreachable, the frontend auto-enters DEMO mode (sample data + demo banner, zero API, zero key, cannot place orders).
+
 ## Directory layout
 ```
 aitrader/

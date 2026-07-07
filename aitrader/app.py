@@ -25,6 +25,7 @@ app.py — GMGN AI Trader 本地后端 (FastAPI)
 
 from __future__ import annotations
 import json, os, re, subprocess, random, datetime, pathlib, threading, math, shlex, time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
@@ -70,6 +71,13 @@ CFG = {
     # 选择质量：共识 = 聪明钱(smart_degen) + 知名KOL(renowned) 计数之和
     "min_smart_money_confluence": 1,
     "min_llm_conviction": 0.6,
+    # dev 评估维度：初排后只对前 dev_pool_n 个幸存者额外查 dev 历史（token info 的 dev 对象），
+    # 结果按地址缓存 dev_info_ttl_s 秒（dev 历史变化慢，跨轮复用、不每轮重拉，省 cli 配额）。
+    "dev_pool_n": 24,            # >llm_max，让 dev 子分能重排 gate3 名额边界
+    "dev_info_ttl_s": 600,
+    "min_dev_score": 0.15,       # dev 评分过滤：低于此分（工厂号/连环换皮/喷币）直接砍，不进 LLM/待决策
+    "dev_sec_scan_n": 3,         # dev 安全扫描：对该 dev 最近 N 个发币逐个查 token security（不安全则降分+提示风险）
+    "dev_fetch_workers": 8,      # dev 历史并发拉取线程数：冷缓存首轮把 24×(info+created+扫描) 串行 cli 改为并发，省掉「一直 loading」的长延时（subprocess 等待时释放 GIL）
     # 排序档位：趋势动能跟随（看现在在不在涨、买盘强不强、量价齐升）
     "rank_profile": "momentum",
     "rank_weights": {
@@ -79,6 +87,7 @@ CFG = {
         "turnover": 12,     # 换手率 = 成交量/市值
         "consensus": 12,    # 聪明钱+KOL 共识（降权，避免老盘累计量霸榜）
         "safety": 10,       # 放权 + 筹码分散
+        "dev": 12,          # dev 评估子分（历史金狗加分 / 连环发币·删推·已清仓减分）
     },
     "momentum_reject_chg1h": -0.12,  # 1h 跌超 12%
     "momentum_reject_chg5m": -0.06,  # 且 5m 仍在跌 → 判阴跌、LLM reject
@@ -197,6 +206,8 @@ class GMGNAdapter:
     def market_trending(self, **kw) -> list[dict]: raise NotImplementedError
     def token_info(self, addr) -> dict: raise NotImplementedError
     def token_price(self, addr) -> float: raise NotImplementedError
+    def dev_info(self, addr) -> dict: raise NotImplementedError   # dev 评估：归一化 creator/dev 历史
+    def created_tokens(self, wallet) -> dict: raise NotImplementedError  # dev 钱包发币历史（含存活率）
     def token_security(self, addr) -> dict: raise NotImplementedError
     def token_holders(self, addr) -> dict: raise NotImplementedError
     def portfolio_stats(self, wallet) -> dict: raise NotImplementedError
@@ -212,13 +223,24 @@ class LiveGMGN(GMGNAdapter):
         self.env = {**os.environ, **load_env()}
         self._wallet_cache: dict[str, str] = {}   # chain -> bound wallet address
 
+    @staticmethod
+    def _check_code(resp):
+        # gmgn-cli 限流/配额/瞬时错误时常以 exit 0 + 业务码返回（code 非 0，且无 data/rank）。
+        # 不校验就会被下游静默当成「空热榜」→ 列表整页清空。显式抛错，让调用方走失败分支。
+        if isinstance(resp, dict):
+            code = resp.get("code")
+            if code not in (0, None):
+                msg = resp.get("msg") or resp.get("message") or resp.get("error") or ""
+                raise RuntimeError(f"gmgn-cli code={code} {msg}".strip())
+        return resp
+
     def _cli(self, *args) -> dict:
         cmd = ["gmgn-cli", *args, "--chain", self.chain, "--raw"]
         out = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=25, env=self.env)
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
-        return json.loads(out.stdout)
+        return self._check_code(json.loads(out.stdout))
 
     def _run_cmd(self, cmd_str: str) -> dict:
         """执行用户自定义的完整 gmgn-cli 命令（不经 shell，避免注入扩大）。"""
@@ -230,7 +252,7 @@ class LiveGMGN(GMGNAdapter):
         out = subprocess.run(parts, capture_output=True, text=True, timeout=25, env=self.env)
         if out.returncode != 0:
             raise RuntimeError(f"gmgn-cli error: {out.stderr.strip()}")
-        return json.loads(out.stdout)
+        return self._check_code(json.loads(out.stdout))
 
     def market_trending(self, cmd=None, interval="1h", orderby="volume", limit=100,
                         filters=("not_wash_trading",)):
@@ -243,8 +265,10 @@ class LiveGMGN(GMGNAdapter):
             for f in filters:
                 args += ["--filter", f]
             resp = self._cli(*args)
-        data = resp.get("data", resp)
-        return data.get("rank", data.get("tokens", []))
+        data = resp.get("data") or resp                 # data 可能为 null（错误payload）→ 回退到 resp
+        if not isinstance(data, dict):
+            return []
+        return data.get("rank") or data.get("tokens") or []
 
     def token_info(self, addr):
         return self._cli("token", "info", "--address", addr)
@@ -255,6 +279,45 @@ class LiveGMGN(GMGNAdapter):
         p = d.get("price")
         return _f(p.get("price")) if isinstance(p, dict) else _f(p)
 
+    def created_tokens(self, wallet):
+        # dev 钱包发币历史：portfolio created-tokens（含 inner_count 喷币量 / open_ratio 存活率 / 逐币状态）
+        return self._cli("portfolio", "created-tokens", "--wallet", wallet)
+
+    def dev_info(self, addr):
+        # dev 评估数据源：① token info 的 dev 对象（creator 地址/换皮历史/已清仓） +
+        # ② portfolio created-tokens 查该 creator 钱包的发币历史（喷币量/存活率/逐币 rug 判定）。
+        d = self._cli("token", "info", "--address", addr)
+        info = d.get("data", d) if isinstance(d, dict) else {}
+        dp = _dev_from_info(info)
+        creator = (info.get("dev") or {}).get("creator_address")
+        if creator:
+            try:
+                ct = self.created_tokens(creator)
+                _merge_created(dp, ct.get("data", ct) if isinstance(ct, dict) else {})
+                self._scan_dev_security(dp)   # 逐币安全扫描（最近 N 个发币）
+            except Exception:
+                pass    # created-tokens 查不到 → dev_score 回退用 token-info 字段，不阻断
+        return dp
+
+    def _scan_dev_security(self, dp: dict):
+        # 对 dev 最近 dev_sec_scan_n 个发币逐个 token security，统计不安全数（不安全→降分+提示风险）
+        recent = dp.pop("_recent", [])
+        checked = unsafe = 0; risks = []
+        for addr in recent:
+            try:
+                bad = _security_unsafe(self.token_security(addr), self.chain)
+            except Exception:
+                continue
+            checked += 1
+            if bad:
+                unsafe += 1
+                if bad not in risks:
+                    risks.append(bad)
+        dp["sec_checked"] = checked
+        dp["sec_unsafe"] = unsafe
+        dp["sec_risks"] = risks                                       # 去重的风险标签（展示用）
+        dp["sec_risk_rate"] = round(unsafe / checked, 3) if checked else 0.0
+
     def token_security(self, addr):
         # 归一化为逃生监控所需的安全快照（真实 1.3.9 无 security_score）
         d = self._cli("token", "security", "--address", addr)
@@ -264,6 +327,9 @@ class LiveGMGN(GMGNAdapter):
             renounced_freeze=_b(d.get("renounced_freeze_account")),
             burn_ratio=_f(d.get("burn_ratio")),
             top10=_f(d.get("top_10_holder_rate")),
+            # dev 安全扫描用：EVM 是否开源 / 是否貔貅（不可卖）。Sol 无开源概念，扫描里按链区分
+            open_source=_b(d.get("is_open_source") if d.get("is_open_source") is not None else d.get("open_source")),
+            can_not_sell=_b(d.get("can_not_sell")),
         )
 
     def token_holders(self, addr):
@@ -312,7 +378,10 @@ class MockGMGN(GMGNAdapter):
         def tok(symbol, price, mcap, vol, chg1h, *, chg5m=None, buys=600, sells=400,
                 honeypot=0, mint=1, freeze=1, burn=0.0,
                 buy_tax=0.0, sell_tax=0.0, rug=0.0, bundler=0.05, dev=0.03, top10=0.25,
-                degen=0, renowned=0, sniper=0, age_min=45):
+                degen=0, renowned=0, sniper=0, age_min=45,
+                dev_open=6, dev_status="creator_hold", dev_bal=1.0, dev_ath_mc=0.0,
+                dev_delpost=0, dev_cto=0, dev_imgdup=0,
+                dev_inner=0, dev_surv=1.0, dev_badsec=0):
             if chg5m is None:
                 chg5m = round(chg1h * 0.3, 2)   # 默认 5m 与 1h 同向
             return dict(symbol=symbol, price=price, market_cap=mcap, volume=vol,
@@ -321,11 +390,17 @@ class MockGMGN(GMGNAdapter):
                         renounced_mint=mint, renounced_freeze_account=freeze, burn_ratio=burn,
                         buy_tax=buy_tax, sell_tax=sell_tax, rug_ratio=rug, bundler_rate=bundler,
                         dev_team_hold_rate=dev, top_10_holder_rate=top10, smart_degen_count=degen,
-                        renowned_count=renowned, sniper_count=sniper, age_min=age_min)
+                        renowned_count=renowned, sniper_count=sniper, age_min=age_min,
+                        # dev 评估维度（与真实 token info 的 dev 对象同构）
+                        dev_open_count=dev_open, dev_token_status=dev_status, dev_token_balance=dev_bal,
+                        dev_ath_mc=dev_ath_mc, dev_del_post=dev_delpost, dev_cto=dev_cto,
+                        dev_imgdup=dev_imgdup, dev_inner=dev_inner, dev_surv=dev_surv,
+                        dev_badsec=dev_badsec)
         return {
             # 干净 + 强共识 → 高优先级 ACTION
             "CLEANCATxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":
-                tok("CLEANCAT", 0.0021, 180_000, 950_000, 35.0, bundler=0.04, dev=0.03, top10=0.22, degen=2, renowned=1, age_min=42),
+                tok("CLEANCAT", 0.0021, 180_000, 950_000, 35.0, bundler=0.04, dev=0.03, top10=0.22, degen=2, renowned=1, age_min=42,
+                    dev_open=5, dev_ath_mc=8_000_000, dev_inner=5, dev_surv=1.0),   # 优质 dev：5发全活·出过金狗·不喷币
             # honeypot → gate1 避雷
             "RUGPULLyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy":
                 tok("RUGPULL", 0.0009, 60_000, 400_000, 180.0, honeypot=1, mint=0, freeze=0, bundler=0.22, dev=0.18, top10=0.61, degen=1),
@@ -337,13 +412,16 @@ class MockGMGN(GMGNAdapter):
                 tok("NOAUTH", 0.003, 120_000, 520_000, 22.0, mint=0, bundler=0.08, dev=0.04, top10=0.30, degen=1),
             # 干净但 1h 已暴涨 → LLM 判 late（gate4）
             "LATEMOONwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww":
-                tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900),
+                tok("LATEMOON", 0.05, 4_800_000, 1_200_000, 250.0, bundler=0.06, dev=0.04, top10=0.28, degen=2, sniper=3, age_min=900,
+                    dev_open=180, dev_ath_mc=30_000, dev_imgdup=8, dev_inner=2000, dev_surv=0.01, dev_badsec=2),   # 内盘沉底2000·存活1%·复用同图·发过不安全币 → 工厂号
             # 干净，弱共识 → ACTION
             "GOODDOGvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv":
-                tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51),
+                tok("GOODDOG", 0.0008, 140_000, 880_000, 28.0, bundler=0.05, dev=0.02, top10=0.25, degen=1, renowned=0, age_min=51,
+                    dev_open=140, dev_ath_mc=50_000, dev_inner=600, dev_surv=0.02, dev_badsec=1),   # 内盘沉底600·存活2% → 工厂号
             # 干净 → ACTION（可能触并发/敞口风控 → risk_warn）
             "BASEPEPEuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu":
-                tok("BASEPEPE", 0.0015, 160_000, 760_000, 31.0, bundler=0.07, dev=0.03, top10=0.30, degen=1, age_min=60),
+                tok("BASEPEPE", 0.0015, 160_000, 760_000, 31.0, bundler=0.07, dev=0.03, top10=0.30, degen=1, age_min=60,
+                    dev_open=12, dev_status="creator_close", dev_bal=0.0, dev_inner=15, dev_surv=0.55),   # 已清仓·存活55% → 中性偏弱
             # 干净但零共识 → gate2 共识门
             "LONECOINllllllllllllllllllllllllllllllllllll":
                 tok("LONECOIN", 0.0012, 100_000, 300_000, 18.0, bundler=0.06, dev=0.03, top10=0.28, degen=0, renowned=0),
@@ -375,7 +453,38 @@ class MockGMGN(GMGNAdapter):
         d = self.db[addr]
         return dict(honeypot=bool(d["is_honeypot"]), renounced_mint=bool(d["renounced_mint"]),
                     renounced_freeze=bool(d["renounced_freeze_account"]),
-                    burn_ratio=d["burn_ratio"], top10=d["top_10_holder_rate"])
+                    burn_ratio=d["burn_ratio"], top10=d["top_10_holder_rate"],
+                    open_source=True, can_not_sell=False)
+
+    def created_tokens(self, wallet):
+        # 同构空壳：Mock 的发币历史在 dev_info 内直接合成（见下），此处仅满足适配器契约
+        return dict(open_count=0, inner_count=0, open_ratio=1.0, creator_ath_info={}, tokens=[])
+
+    def dev_info(self, addr):
+        # 与 LiveGMGN.dev_info 同构：token-info 字段 + created-tokens 发币历史（存活率/喷币量）合并
+        d = self.db[addr]
+        status = d["dev_token_status"]; bal = d["dev_token_balance"]
+        dp = dict(
+            creator="MOCKDEV" + addr[:8], open_count=d["dev_open_count"], status=status, balance=bal,
+            exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
+            ath_mc=d["dev_ath_mc"], del_post_count=d["dev_del_post"],
+            create_count=d["dev_open_count"], cto=bool(d["dev_cto"]))
+        # 合成发币历史 tokens 数组（让 _merge_created 能逐币分类出存活/rug，与 Live 同构）
+        n = d["dev_open_count"]; m = min(max(n, 1), 40); alive_n = round(m * d["dev_surv"])
+        toks = [dict(token_address=f"{addr[:6]}MT{i}", chain="sol",
+                     is_open=(i < alive_n), liquidity_less_4k=(i >= alive_n),
+                     create_timestamp=2_000_000 + i) for i in range(m)]
+        _merge_created(dp, dict(open_count=n, inner_count=d["dev_inner"],
+                                open_ratio=d["dev_surv"],
+                                creator_ath_info={"ath_mc": d["dev_ath_mc"]}, tokens=toks))
+        dp["own_img_reuse"] = d["dev_imgdup"]   # Mock：dev_imgdup 即"该 dev 自己复用 logo 的次数"
+        # 安全扫描结果（Mock 直接合成：dev_badsec 个最近币不安全）
+        dp.pop("_recent", None)
+        bad = d["dev_badsec"]; chk = min(CFG["dev_sec_scan_n"], max(1, n))
+        dp["sec_checked"] = chk; dp["sec_unsafe"] = min(bad, chk)
+        dp["sec_risks"] = (["可增发"] if bad else [])
+        dp["sec_risk_rate"] = round(min(bad, chk) / chk, 3) if chk else 0.0
+        return dp
 
     def token_holders(self, addr):
         d = self.db[addr]
@@ -427,6 +536,85 @@ def _b(v) -> bool:
         return v.strip().lower() in ("1", "true", "yes")
     return False
 
+def _dev_from_info(info: dict) -> dict:
+    """从 token info 的 dev 对象归一化出 dev 评估所需字段（Live/Mock 同构）。
+    creator_open_count=dev 历史发币总数；ath_token_info.ath_mc=历史最佳币峰值市值；
+    creator_token_status/balance=是否已清仓本币。
+    ⚠️ 换皮重发不在这里取：改用 created-tokens 里「dev 自己各币的 logo 复用」判（见 _merge_created.own_img_reuse），
+    不用 token info 的全局 image_dup_count（别人盗图会误伤原作者）、也不用 twitter_name_change_history（推特号项目方随填，非 dev 身份）。"""
+    dev = (info or {}).get("dev") or {}
+    ath = dev.get("ath_token_info") or {}
+    status = str(dev.get("creator_token_status") or "")
+    bal = _f(dev.get("creator_token_balance"))
+    return dict(
+        creator=dev.get("creator_address") or "",
+        open_count=int(_f(dev.get("creator_open_count"))),
+        status=status, balance=bal,
+        exited=(bal <= 0 and any(s in status for s in ("close", "clear"))),
+        ath_mc=_f(ath.get("ath_mc")),
+        del_post_count=int(_f(dev.get("twitter_del_post_token_count"))),
+        create_count=int(_f(dev.get("twitter_create_token_count"))),
+        cto=bool(_b(dev.get("cto_flag"))),
+    )
+
+def _merge_created(dp: dict, ct: dict):
+    """把 portfolio created-tokens（dev 钱包发币历史）并入 dev 画像。pump.fun 分内盘(bonding curve)/外盘(迁移到正经池)：
+      inner_count = 一直卡在内盘、从未打满开外盘的币数（发出来没人接、沉底）；
+      open_count  = 真正打满开外盘/毕业的发币数；
+      open_ratio  = 开外盘率(毕业率) = open /(open + inner)，越低越像批量发币工厂；
+      creator_ath_info.ath_mc = 历史最佳币峰值。"""
+    ct = ct or {}
+    launches = int(_f(ct.get("open_count")))
+    dp["inner_count"] = int(_f(ct.get("inner_count")))      # 内盘沉底（未开外盘）
+    dp["launches"] = launches or dp.get("open_count", 0)    # 开外盘（毕业）
+    dp["survival_rate"] = _clamp(_f(ct.get("open_ratio")))  # 开外盘率(毕业率)
+    ath = (ct.get("creator_ath_info") or {}).get("ath_mc")
+    if ath:
+        dp["ath_mc"] = _f(ath)
+    # 逐币分类（demo 算法）：用 created-tokens 行内 is_open + liquidity_less_4k 判存活/rug，免额外 cli。
+    # 存活 = 仍在外盘且流动性未抽干；rug = 其余（已死/抽池/沉底）。alive+rug = 分析的币数。
+    toks = [t for t in (ct.get("tokens") or []) if isinstance(t, dict)]
+    alive = sum(1 for t in toks if t.get("is_open") and not t.get("liquidity_less_4k"))
+    total = len(toks)
+    dp["analyzed"] = total
+    dp["alive"] = alive
+    dp["rugged"] = max(0, total - alive)
+    dp["rug_rate"] = round((total - alive) / total, 3) if total else 0.0
+    # 换皮重发：只看「这个 dev 自己发的币」里有没有复用同一张 logo（排除别人盗图——盗图会抬高全局
+    # image_dup_count、误伤只发过 1 个币的原作者）。own_img_reuse = 自己发的币数 - 不同 logo 数 = 自重发次数。
+    logos = [t.get("logo") for t in toks if t.get("logo")]
+    dp["own_img_reuse"] = max(0, len(logos) - len(set(logos)))
+    # 最近 N 个币的地址（按发币时间倒序）→ 供逐币安全扫描
+    recent = sorted(toks, key=lambda t: -_f(t.get("create_timestamp")))[:CFG["dev_sec_scan_n"]]
+    dp["_recent"] = [t.get("token_address") for t in recent if t.get("token_address")]
+
+def _dev_reskin(dp: dict) -> float:
+    """换皮重发强度 0..1：只看「这个 dev 自己发的币」复用同一张 logo 的次数（own_img_reuse）。
+    ⚠️ 不用全局 image_dup_count——别人盗图发新币会抬高全局计数、误伤只发过 1 个币的原作者（用户指正）。
+    自重发 1 次容忍，2 次起算、5 次满。不用推特改名信号（推特号项目方随填，非 dev 身份）。"""
+    if not dp:
+        return 0.0
+    return _clamp((dp.get("own_img_reuse", 0) - 1) / 4.0)
+
+def _security_unsafe(sec: dict, chain: str) -> str | None:
+    """判一个币的 token security 是否不安全，返回风险标签（中文短语）或 None。按链区分判据：
+      Sol：可增发(未弃 mint) / 未弃冻结权 / 蜜罐；EVM：未开源 / 貔貅(不可卖) / 蜜罐。"""
+    if not sec:
+        return None
+    if sec.get("honeypot"):
+        return "蜜罐"
+    if chain == "sol":
+        if not sec.get("renounced_mint"):
+            return "可增发"
+        if not sec.get("renounced_freeze"):
+            return "未弃冻结权"
+    else:   # EVM: bsc / base / eth
+        if sec.get("can_not_sell"):
+            return "貔貅·卖不出"
+        if not sec.get("open_source"):
+            return "未开源"
+    return None
+
 @dataclass
 class TokenFeatures:
     address: str; symbol_raw: str; symbol_safe: str
@@ -443,6 +631,9 @@ class TokenFeatures:
     renowned: int = 0
     sniper_count: int = 0
     sm_confluence: int = 0   # = smart_degen + renowned
+    # dev 评估维度（额外查 dev 历史后回填；初排时为 None）
+    dev: dict | None = None        # 归一化 dev 历史（_dev_from_info）
+    dev_eval: float | None = None  # dev 子分 0..1（dev_score）
 
 class FeatureExtractor:
     """trending 一行已含几乎全部尽调字段，直接据此建特征（省掉逐个 info/security/holders）。"""
@@ -513,9 +704,10 @@ def hard_gates(f: TokenFeatures):
 # 5. 评分排序（ML 占位 / 砍狠）——只对过了硬门槛的幸存者打分
 #    生产可换成轻量 ML 排序模型；这里是确定性启发式，与前端 priCalc 对齐。
 # ──────────────────────────────────────────────────────────────────────────
-def priority_score(f: TokenFeatures, conv: float, crowd: str) -> int:
+def priority_score(f: TokenFeatures, conv: float, crowd: str, dev: float | None = None) -> int:
     # 趋势动能档：以"现在在不在涨、买盘强不强、量价齐升"为主，共识降权（避免老盘累计量霸榜）。
     # 各子分先归一化到 0..1，再按 CFG['rank_weights'] 加权；1h 阴跌则整体沉底。
+    # dev=dev 评估子分(0..1)，仅对查过 dev 历史的幸存者传入；None 则该维度不参与（初排）。
     w = CFG["rank_weights"]
     s_mom5  = _clamp((f.chg_5m + 0.05) / 0.30)          # -5%→0,  +25%→1（5m 主导）
     s_mom1h = _clamp((f.chg_1h + 0.10) / 0.60)          # -10%→0, +50%→1
@@ -526,9 +718,73 @@ def priority_score(f: TokenFeatures, conv: float, crowd: str) -> int:
               + 0.5 * _clamp((0.40 - f.top10) / 0.40)   # 放权 + 筹码分散
     s = (w["mom5m"] * s_mom5 + w["mom1h"] * s_mom1h + w["buy_pressure"] * s_buy
          + w["turnover"] * s_turn + w["consensus"] * s_cons + w["safety"] * s_safe)
+    if dev is not None:                                 # dev 评估维度（查过 dev 历史才计入）
+        s += w["dev"] * _clamp(dev)
     if f.chg_1h <= CFG["momentum_reject_chg1h"]:        # 阴跌沉底
         s *= 0.4
     return max(0, min(99, round(s)))
+
+def dev_score(dp: dict) -> float:
+    """dev 评估子分 0..1（越高=dev 质量越好）。确定性、纯代码（LLM 不碰）。
+    实现 demo 的真实算法：用 portfolio created-tokens 查 dev 钱包发币历史，逐币判存活/rug + 逐币安全扫描。
+      • 主分 = 存活率（1 - rug 率，逐币按 is_open+流动性分类）：dev 历史发的币活下来的比例。100%→优质、~1%→工厂号；
+      • 逐币安全扫描 sec_risk_rate：dev 最近发的币里不安全(可增发/未弃权/未开源/貔貅)的比例 → 降分 + 提示风险；
+      • 内盘沉底强罚 inner_count：海量币卡在内盘从没开外盘（动辄上千）= 批量发币工厂；
+      • 历史战绩 ath_mc 小幅加分，但**按存活率门控**（工厂的一次金狗是撞大运，不计入）；
+      • 换皮重发 reskin（复用同图）扣分；已清仓本币 exited 轻罚；cto 社区接管小幅正向。
+    回退：created-tokens 查不到 → 退化用 open_count（连环发币）+ ath 战绩打折。"""
+    if not dp:
+        return 0.5                                      # 查不到 → 中性，不偏袒也不冤杀
+    ath = dp.get("ath_mc", 0.0)
+    track = _clamp((math.log10(max(1.0, ath)) - 5.0) / 2.0)   # 历史最佳 $100k→0, $10M→1
+    # 主分用存活率：优先逐币分类(1-rug率)，否则开外盘率 open_ratio
+    if dp.get("analyzed", 0) > 0:
+        surv = 1.0 - dp.get("rug_rate", 0.0)
+    else:
+        surv = dp.get("survival_rate")
+    if surv is not None:                                # —— 主路径：存活率主导
+        s = 0.25 + 0.55 * surv
+        inner = dp.get("inner_count")
+        if inner is not None:                           # 内盘沉底强罚（卡内盘没开外盘）：50→0, 1000→满
+            s -= 0.30 * _clamp((inner - 50) / 950.0)
+        s += 0.15 * track * surv                        # 战绩仅对高存活 dev 计入（门控撞大运）
+    else:                                               # —— 回退：仅有 token-info 字段
+        serial = _clamp((dp.get("open_count", 0) - 20) / 180.0)
+        s = 0.30 + 0.55 * track * (1 - 0.7 * serial) - 0.20 * serial
+    s -= 0.35 * dp.get("sec_risk_rate", 0.0)            # 逐币安全扫描：dev 发过不安全币 → 降分
+    s -= 0.20 * _dev_reskin(dp)                         # 换皮重发扣分
+    if dp.get("exited"):                                # 已清仓本币 → 利益不对齐
+        s -= 0.10
+    if dp.get("cto"):                                   # 社区接管 → dev 跑路风险被淡化，小幅正向
+        s += 0.05
+    return round(_clamp(s), 3)
+
+# dev 历史按 (chain, address) 缓存：dev 数据变化慢，TTL 内跨轮/多 tab 复用，避免每轮重拉烧配额。
+_DEV_CACHE: dict = {}
+def get_dev_profile(g: GMGNAdapter, chain: str, addr: str) -> dict | None:
+    key = (chain, addr)
+    now = datetime.datetime.now(datetime.timezone.utc).timestamp()
+    hit = _DEV_CACHE.get(key)
+    if hit and now - hit[0] < CFG["dev_info_ttl_s"]:
+        return hit[1]
+    try:
+        dp = g.dev_info(addr)
+    except Exception:
+        return None                                     # 查不到 → 本轮按中性处理，不缓存失败、不阻断
+    _DEV_CACHE[key] = (now, dp)
+    return dp
+
+def _fetch_dev_profiles(g: GMGNAdapter, chain: str, addrs: list[str]) -> dict[str, dict | None]:
+    """并发拉一组地址的 dev 历史，返回 {address: dev_profile|None}。
+    缓存命中走不到线程池（get_dev_profile 内 TTL 判断），故首轮冷缓存才真正并发打 cli；
+    单地址直接同步拉（不值当起线程）。workers 上限约束并发，避免对 gmgn-cli 配额造成尖峰。"""
+    uniq = list(dict.fromkeys(a for a in addrs if a))
+    if len(uniq) <= 1:
+        return {a: get_dev_profile(g, chain, a) for a in uniq}
+    workers = max(1, min(CFG["dev_fetch_workers"], len(uniq)))
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = ex.map(lambda a: (a, get_dev_profile(g, chain, a)), uniq)
+        return dict(results)
 
 # ──────────────────────────────────────────────────────────────────────────
 # 6. LLM 判断（只对幸存者；占位启发式，标注真实接入点）
@@ -644,6 +900,7 @@ class AppState:
         self._adapters: dict[str, GMGNAdapter] = {}              # chain -> 适配器（缓存）
         self._mock = MockGMGN()                                  # 无 key 时所有链共用一个 Mock
         self._trending_cache: dict[str, tuple] = {}             # chain -> (monotonic_ts, rows)
+        self._trending_last_good: dict[str, list] = {}          # chain -> 最近一次非空热榜（限流/空榜兜底，列表不清空）
         self.risk = RiskManager()
         self.positions: list[dict] = []          # 每项含 entry 快照 + cycles + chain
         self.trending_cmds: dict[str, str] = load_trending_cmds()   # 按链热榜命令（落盘持久，重启不丢）
@@ -675,6 +932,7 @@ class AppState:
         self.live = True
         self._adapters.clear()
         self._trending_cache.clear()
+        self._trending_last_good.clear()              # 适配器换了(mock→live)，旧兜底作废
 
     def get_trending_cmd(self, chain: str) -> str:
         return self.trending_cmds.get(chain) or default_trending_cmd(chain)
@@ -687,15 +945,26 @@ class AppState:
         """重置该链热榜命令为默认（删除用户覆盖 + 作废缓存 + 落盘）。"""
         self.trending_cmds.pop(chain, None)
         self._trending_cache.pop(chain, None)
+        self._trending_last_good.pop(chain, None)     # 命令变了，旧兜底不能再沿用
         save_trending_cmds(self.trending_cmds)
 
     def trending_rows(self, chain: str) -> list:
-        """取某链热榜行：TTL 内复用缓存（同链多 tab 共享一次 cli），过期才真打 cli。"""
+        """取某链热榜行：TTL 内复用缓存（同链多 tab 共享一次 cli），过期才真打 cli。
+        瞬时拉取失败/空榜时回退到「最近一次非空结果」，避免一次限流就把整页清空。"""
         now = time.monotonic()
         hit = self._trending_cache.get(chain)
         if hit and (now - hit[0]) < TRENDING_CACHE_TTL:
             return hit[1]
-        rows = self.adapter_for(chain).market_trending(cmd=self.get_trending_cmd(chain))
+        try:
+            rows = self.adapter_for(chain).market_trending(cmd=self.get_trending_cmd(chain))
+        except Exception as e:
+            rows = []
+            log("TRENDING_FAIL", chain, f"热榜拉取失败：{e}")
+        if not rows and self._trending_last_good.get(chain):
+            log("TRENDING_STALE", chain, "本轮空榜/失败 → 沿用最近一次非空热榜，列表不清空")
+            rows = self._trending_last_good[chain]
+        elif rows:
+            self._trending_last_good[chain] = rows           # 仅缓存非空结果作为兜底
         self._trending_cache[chain] = (now, rows)
         return rows
 
@@ -762,14 +1031,31 @@ def screen_once(chain: str) -> dict:
             continue
         survivors.append(f)
 
-    # STEP 4 评分排序（ML 占位）：先给个临时拥挤度估计用于打分，再按分数排序砍到 llm_max
-    scored = []
-    for f in survivors:
-        tmp_crowd = "late" if f.chg_1h >= 2.0 else "early"
-        scored.append((priority_score(f, 0.8, tmp_crowd), f))
+    # STEP 4a 初排（无 dev）：先给个临时拥挤度估计用于打分，按动能分排序
+    def _crowd(f): return "late" if f.chg_1h >= 2.0 else "early"
+    scored = [(priority_score(f, 0.8, _crowd(f)), f) for f in survivors]
     scored.sort(key=lambda x: -x[0])
-    to_llm = scored[:CFG["llm_max"]]
-    for sc, f in scored[CFG["llm_max"]:]:
+    # STEP 4b dev 评估维度：只对排序靠前的 dev_pool_n 个额外查 dev 历史（带 TTL 缓存），
+    # 算 dev 子分折进 priority_score 重排——dev 好的上浮、连环发币/删推/已清仓的下沉。
+    pool = scored[:CFG["dev_pool_n"]]
+    # 并发拉 dev 历史：每个 dev 内含 info+created+逐币安全多次 cli、彼此独立，串行会让冷缓存首轮叠到上百次
+    # 子进程调用（→「一直 loading」）。线程池并发拉取（subprocess 等待时释放 GIL），评分/过滤仍按原序串行做，
+    # 保证 decisions 顺序与结果确定性不变。
+    feats = [f for _, f in pool]
+    profiles = _fetch_dev_profiles(g, chain, [f.address for f in feats])
+    dev_ok = []
+    for f in feats:
+        f.dev = profiles.get(f.address)
+        f.dev_eval = dev_score(f.dev)
+        if f.dev_eval < CFG["min_dev_score"]:           # dev 评分过滤：工厂号/连环换皮/喷币 → 直接砍（不进 LLM/待决策）
+            decisions.append(_reject(f, _dev_reject_reason(f), 3, None))
+            continue
+        dev_ok.append(f)
+    pool = [(priority_score(f, 0.8, _crowd(f), f.dev_eval), f) for f in dev_ok]
+    pool.sort(key=lambda x: -x[0])
+    ranked = pool + scored[CFG["dev_pool_n"]:]          # dev 重排的头部在前，池外按初排分续后
+    to_llm = ranked[:CFG["llm_max"]]
+    for sc, f in ranked[CFG["llm_max"]:]:
         decisions.append(_reject(f, "REJECT 排序：优先级低于本轮 LLM 名额", 3, None))
 
     # STEP 5 LLM 只对幸存者解释；STEP 6 仓位由代码算；产出候选（不执行）
@@ -786,7 +1072,7 @@ def screen_once(chain: str) -> dict:
         size = position_size()
         # 组合风控不在此阻断，只标 risk_warn（人在环：提示而非硬拦）
         allow, rnote = ST.risk.gate(size, n_pos, exposure)
-        pri = priority_score(f, v.conviction, v.crowdedness)
+        pri = priority_score(f, v.conviction, v.crowdedness, f.dev_eval)
         decisions.append(dict(
             decision=dict(symbol=f.symbol_safe, address=f.address, action="ACTION",
                           reason="通过全部闸门 · 待决策", size_sol=size, risk_warn=(not allow),
@@ -821,6 +1107,23 @@ def _public_broadcast_loop():
             _PUBLIC_CACHE["err"] = str(e)
         stop.wait(DEFAULT_POLL_S)
 
+def _dev_reject_reason(f) -> str:
+    """dev 评分过滤的拒绝理由（demo 风格：点明工厂号/换皮/喷币/已清仓）。"""
+    dp = f.dev or {}
+    bits = []
+    if dp.get("analyzed", 0) > 0:
+        bits.append(f"近 {dp['analyzed']} 币 rug率 {dp.get('rug_rate', 0)*100:.0f}%")
+    if dp.get("inner_count", 0) > 50:
+        bits.append(f"内盘沉底 {dp['inner_count']}")
+    if dp.get("sec_unsafe", 0) > 0:
+        bits.append("发过不安全币:" + "·".join(dp.get("sec_risks", [])))
+    if _dev_reskin(dp) >= 0.25:
+        bits.append("换皮重发")
+    if dp.get("exited"):
+        bits.append("已清仓本币")
+    detail = ("：" + " · ".join(bits)) if bits else ""
+    return f"REJECT Dev 信誉低（评分 {round((f.dev_eval or 0)*100)}/100{detail}）"
+
 def _reject(f, reason, gate_idx, v):
     log("FILTER", f.symbol_safe, reason)
     return dict(decision=dict(symbol=f.symbol_safe, address=f.address, action="SKIP",
@@ -835,7 +1138,22 @@ def _feat(f):
                 smart_degen=f.smart_degen, renowned=f.renowned, sm_confluence=f.sm_confluence,
                 sniper_count=f.sniper_count, chg_1h=round(f.chg_1h, 3), chg_5m=round(f.chg_5m, 3),
                 buy_ratio=round(f.buy_ratio, 2), turnover=round(f.turnover, 2),
-                liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1))
+                liquidity=f.liquidity, mcap=f.mcap, age_min=round(f.age_min, 1),
+                # dev 评估维度（仅查过 dev 历史的幸存者非空）
+                dev_score=(round(f.dev_eval, 2) if f.dev_eval is not None else None),
+                dev_launches=(f.dev.get("analyzed") if f.dev else None),     # 历史发币(分析的币数)
+                dev_alive=(f.dev.get("alive") if f.dev else None),           # 存活
+                dev_rugged=(f.dev.get("rugged") if f.dev else None),         # rug 次数
+                dev_rug_rate=(f.dev.get("rug_rate") if f.dev else None),     # rug 率
+                dev_inner_count=(f.dev.get("inner_count") if f.dev else None),   # 内盘沉底
+                dev_survival=(f.dev.get("survival_rate") if f.dev else None),    # 开外盘率
+                dev_sec_unsafe=(f.dev.get("sec_unsafe") if f.dev else None),     # 安全扫描:不安全币数
+                dev_sec_checked=(f.dev.get("sec_checked") if f.dev else None),
+                dev_sec_risks=(f.dev.get("sec_risks") if f.dev else None),      # 风险标签
+                dev_ath_mc=(f.dev.get("ath_mc") if f.dev else None),
+                dev_exited=(f.dev.get("exited") if f.dev else None),
+                dev_own_reuse=(f.dev.get("own_img_reuse") if f.dev else None),   # dev 自己复用 logo 次数
+                dev_reskin=(_dev_reskin(f.dev) >= 0.25 if f.dev else None))
 
 def _portfolio():
     return dict(open_positions=len(ST.positions), max_concurrent=CFG["max_concurrent_positions"],
@@ -1117,6 +1435,7 @@ def api_settings(s: SettingsIn):
                 raise HTTPException(400, "命令必须以 `gmgn-cli market trending` 开头")
             ST.set_trending_cmd(ch, cmd)         # set_trending_cmd 内已落盘
             ST._trending_cache.pop(ch, None)     # 命令变了，作废该链缓存
+            ST._trending_last_good.pop(ch, None) # 同时作废兜底，免得沿用旧命令的结果
     return dict(ok=True, trending_cmd=ST.get_trending_cmd(ch))
 
 @app.post("/api/settings/reset")
