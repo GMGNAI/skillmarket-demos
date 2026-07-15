@@ -1607,7 +1607,7 @@ let curView=sessionStorage.getItem('aitrader_view')||'token';
 let wltData=null, wltBusy=false;
 
 const WLK={
-  zh:{need_addr:'请输入钱包地址', loading:'查询中…', fail:'查询失败',
+  zh:{need_addr:'请输入钱包地址', need_real_addr:'请输入真实钱包地址进行查询', loading:'查询中…', fail:'查询失败',
     play:'打法', active:d=>`活跃 ${d} 天`, fans:'X',
     s_pnl:'7D 盈亏', s_win:'胜率', s_hold:'均持仓', s_trades:'7D 笔数(买/卖)', s_avg:'均每笔',
     s_early:'进场<$100k', s_flip:'5 秒内买卖',
@@ -1632,7 +1632,7 @@ const WLK={
     u_sec:' 秒', u_min:' 分', u_hr:' 小时', u_day:' 天',
     off:'钱包评估需要本地后端在运行（127.0.0.1:8000）。',
     need_key:'本地后端还没配置 GMGN API Key，已为你打开配置窗口——填好 key 保存后再点一次评估。'},
-  en:{need_addr:'Enter a wallet address', loading:'Querying…', fail:'Query failed',
+  en:{need_addr:'Enter a wallet address', need_real_addr:'Enter a real wallet address to query', loading:'Querying…', fail:'Query failed',
     play:'Style', active:d=>`${d}d active`, fans:'X',
     s_pnl:'7D PnL', s_win:'Win rate', s_hold:'Avg hold', s_trades:'7D trades(b/s)', s_avg:'Avg/trade',
     s_early:'Entry<$100k', s_flip:'Flip <5s',
@@ -1722,6 +1722,7 @@ async function runWallet(){
   const addr=(document.getElementById('wltAddr').value||'').trim();
   const res=document.getElementById('wltResult');
   if(!addr){toast(WLK[lang].need_addr,'err');return;}
+  if(addr===DEMO_WALLET_ADDR){toast(WLK[lang].need_real_addr,'err');return;}
   if(wltBusy)return;wltBusy=true;
   const go=document.getElementById('wltGo');go.disabled=true;
   try{
