@@ -16,7 +16,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{font-family:var(--mono);font-size:13px;color:var(--paper);overflow:hidden;
+body{font-family:var(--mono);font-size:13px;color:var(--paper);overflow-x:auto;overflow-y:hidden;
   background:radial-gradient(140% 70% at 12% -10%,#16130c 0%,transparent 55%),
              radial-gradient(120% 80% at 92% 0%,#131210 0%,transparent 50%),var(--ink);}
 .grain{position:fixed;inset:0;pointer-events:none;z-index:90;opacity:.045;mix-blend-mode:overlay;
@@ -40,11 +40,12 @@ body.publicro #escCard{display:none !important}
 .bar{display:flex;align-items:center;justify-content:space-between;gap:18px;
   border:1px solid var(--line);border-radius:13px;padding:11px 18px;
   background:linear-gradient(180deg,var(--panel2),var(--panel));flex-shrink:0}
-.bar-l{display:flex;align-items:center;gap:13px}
-.logo{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--lime);color:var(--ink);animation:beat 2.6s ease-in-out infinite}
+.bar-l{display:flex;align-items:center;gap:13px;flex-shrink:0}
+.logo{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;background:var(--lime);color:var(--ink);animation:beat 2.6s ease-in-out infinite;flex-shrink:0}
 @keyframes beat{0%,100%{box-shadow:0 0 14px #c8f24a44}50%{box-shadow:0 0 28px #c8f24a99}}
 .logo svg{width:20px;height:20px}
-.bar h1{font-family:var(--disp);font-weight:800;font-size:19px;letter-spacing:-.01em;line-height:1}
+.bar-title{flex:0 0 460px;width:460px}
+.bar h1{font-family:var(--disp);font-weight:800;font-size:19px;letter-spacing:-.01em;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar h1 i{color:var(--lime);font-style:normal;margin:0 6px}
 .bar .tag{font-size:10px;color:var(--dim);letter-spacing:.16em;margin-top:4px}
 .bar-r{display:flex;align-items:center;gap:9px}
@@ -284,8 +285,8 @@ td{padding:5px 10px;vertical-align:middle}
 @keyframes sp{to{transform:rotate(360deg)}}
 
 /* ═══ 视图 Tab 切换（代币筛选 / 钱包评估）═══ */
-.viewtabs{display:flex;gap:6px;background:var(--ink2);border:1px solid var(--line);border-radius:11px;padding:4px}
-.viewtabs button{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--dim);background:none;border:1px solid transparent;border-radius:8px;padding:7px 15px;cursor:pointer;letter-spacing:.02em;transition:.15s}
+.viewtabs{display:flex;flex-shrink:0;gap:6px;background:var(--ink2);border:1px solid var(--line);border-radius:11px;padding:4px}
+.viewtabs button{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--dim);background:none;border:1px solid transparent;border-radius:8px;padding:7px 15px;cursor:pointer;letter-spacing:.02em;transition:.15s;white-space:nowrap}
 .viewtabs button:hover{color:var(--paper2)}
 .viewtabs button.on{color:var(--lime);border-color:var(--lime);background:#c8f24a12}
 .view{flex:1;min-height:0}
@@ -395,7 +396,7 @@ td{padding:5px 10px;vertical-align:middle}
   <div class="bar">
     <div class="bar-l">
       <div class="logo" id="ic-logo"></div>
-      <div><h1>AI&nbsp;TRADER<i>//</i><span data-i18n="h1_suffix">筛选 + 一键成交</span></h1><div class="tag" data-i18n="tag">确定性规则抓全 · ML 砍狠 · LLM 只解释幸存者 · 你按下成交</div></div>
+      <div class="bar-title"><h1>AI&nbsp;TRADER<i>//</i><span data-i18n="h1_suffix">筛选 + 一键成交</span></h1><div class="tag" data-i18n="tag">确定性规则抓全 · ML 砍狠 · LLM 只解释幸存者 · 你按下成交</div></div>
       <div class="viewtabs">
         <button id="tabToken" class="on" onclick="switchView('token')" data-i18n="tab_token">代币筛选</button>
         <button id="tabWallet" onclick="switchView('wallet')" data-i18n="tab_wallet">钱包评估</button>
@@ -1629,7 +1630,8 @@ const WLK={
     self_deal_note:'⚠ 自产自销，两项分数已大幅打折',
     yes:'检出 ⚠', no:'未检出 ✓', none:'无',
     u_sec:' 秒', u_min:' 分', u_hr:' 小时', u_day:' 天',
-    off:'钱包评估需要本地后端在运行（127.0.0.1:8000）。'},
+    off:'钱包评估需要本地后端在运行（127.0.0.1:8000）。',
+    need_key:'本地后端还没配置 GMGN API Key，已为你打开配置窗口——填好 key 保存后再点一次评估。'},
   en:{need_addr:'Enter a wallet address', loading:'Querying…', fail:'Query failed',
     play:'Style', active:d=>`${d}d active`, fans:'X',
     s_pnl:'7D PnL', s_win:'Win rate', s_hold:'Avg hold', s_trades:'7D trades(b/s)', s_avg:'Avg/trade',
@@ -1653,7 +1655,8 @@ const WLK={
     self_deal_note:'⚠ Self-dealer — both scores heavily discounted',
     yes:'found ⚠', no:'none ✓', none:'none',
     u_sec:'s', u_min:'m', u_hr:'h', u_day:'d',
-    off:'Wallet eval needs the local backend running (127.0.0.1:8000).'}
+    off:'Wallet eval needs the local backend running (127.0.0.1:8000).',
+    need_key:'The local backend has no GMGN API Key yet — opened the settings dialog for you. Save a key, then hit evaluate again.'}
 };
 /* DEMO 模式下没有本地后端可查（GitHub Pages 纯静态托管同理），钱包评估给一份写死的示例结果，
    只为展示页面布局长什么样，地址是假的，数字也不代表任何真实钱包。选了一个「发币方+自产自销」的
@@ -1721,8 +1724,18 @@ async function runWallet(){
   if(!addr){toast(WLK[lang].need_addr,'err');return;}
   if(wltBusy)return;wltBusy=true;
   const go=document.getElementById('wltGo');go.disabled=true;
-  res.innerHTML='<div class="wlt-empty"><span class="spin"></span>'+WLK[lang].loading+'</div>';
   try{
+    if(source!=='backend'){
+      // 点评估时顺手探一下本地后端：能连上就自动切过去；没配 key 就引导去配置，而不是拿假地址硬查真接口
+      let st=null;
+      try{const sr=await fetch(API+'/api/status');if(sr.ok)st=await sr.json();}catch(_){}
+      if(!st){res.innerHTML='<div class="wlt-err">'+WLK[lang].off+'</div>';return;}
+      beReady=!!st.has_key;
+      setSource('backend');                       // 会触发 resetWalletView() 清空地址框，下面补回来
+      document.getElementById('wltAddr').value=addr;
+      if(!beReady){res.innerHTML='<div class="wlt-err">'+WLK[lang].need_key+'</div>';return;}
+    }
+    res.innerHTML='<div class="wlt-empty"><span class="spin"></span>'+WLK[lang].loading+'</div>';
     const body={chain:curChain,address:addr,latency_s:3,slippage_pct:0.05,gas_usd:0.2};
     const r=await fetch(API+'/api/wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok){let e={};try{e=await r.json();}catch(_){}
