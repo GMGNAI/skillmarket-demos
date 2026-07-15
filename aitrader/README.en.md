@@ -10,6 +10,7 @@ A separate position escape monitor flags rug signals and prompts a one-click exi
 ## What it does
 
 - **Screening pipeline**: `market trending` pulls trending candidates (rows already carry due-diligence fields, zero extra cli) → **deterministic hard gates** avoid landmines (honeypot / buy-sell tax / rug / bundler / dev holding / top-10 concentration) + consensus (smart-money / KOL counts) → **trend-momentum scoring & ranking** (5m/1h momentum · buy pressure · turnover · consensus · safety · dev) → **the LLM only explains the survivors** (verdict / conviction / crowdedness / thesis) → produces candidates with code-computed sizing.
+- **Wallet Evaluation tab**: a standalone tab next to "Token Screening" — enter any wallet address to break down its trading style. Core insight: **a great track record doesn't mean you can copy it** — it splits "is this trader actually good" from "how much of it can you actually capture" into two separate scores: a **Track-Record Score** (driven by stop-loss discipline + profit-factor/ROI/win-rate/sample size — a low win rate can still score high) and a **Copy-Tradeability Score** (entry market cap / per-trade profit / hold time vs. your latency / execution feasibility / edge type); 14 **trading-style tags** (Dev / Bot / Flash-flipper / Sniper / Diamond hands / Whale / True pro / Bag-holder / Degen gambler / Slow-and-steady / High win-rate / Quick-draw / Obscure hunter / Regular trader — rules detailed in [WALLET_TAB_NOTES.md](WALLET_TAB_NOTES.md)); once a wallet is classified as a token dev (self-launched tokens > half of traded tokens) it reuses the screening side's **Dev reputation** score, and both trading scores are automatically discounted (entry timing / win rate mean nothing on tokens you launched yourself); a **copy-trade backtest simulator** with latency/slippage/gas sliders mirrors the backend formula client-side for instant recompute. The whole page is bilingual (EN/CN, toggled top-right); scoring is deterministic rules — **the LLM never participates**.
 - **Dev evaluation dimension**: for the top-ranked candidates it queries the dev wallet's launch history (`portfolio created-tokens`) + a per-token security scan of the latest N launches (`token security`), and computes a dev reputation score — **driven by per-token survival rate** minus penalties for stuck-inner-curve spam / launching unsafe tokens (mintable / freeze-not-renounced / not-open-source / honeypot) / logo-reskin re-launches / having exited the token. It's both a **ranking sub-score** and a **filter gate**: serial-rug token factories and reskin devs are cut outright (not merely down-ranked). The frontend has a `DEV Score` column + a "Dev reputation card" on row click (launch history / rug rate / survival / reskin / security risks).
 - **Position escape monitor**: a safety snapshot is taken at entry and diff-rechecked each cycle (honeypot / renounce / top-10 concentration); once it degrades past the threshold an "exit now" prompt pops. Strictly separated from screening/risk-control — the LLM never touches the escape path.
 - **One-click buy / sell (human-in-the-loop)**: candidates that clear every gate land in "awaiting your decision"; a trade happens only when you click. A buy polls to confirm the real fill — on failure it records no position and does not lie; the fill carries a tx hash.
@@ -25,8 +26,8 @@ aitrader/
 ├── app.py                 FastAPI backend + screening pipeline (self-contained)
 ├── requirements.txt       fastapi, uvicorn
 ├── static/
-│   └── index.html         frontend dashboard (source file — edit this for local dev; backend serves it same-origin)
-├── docs/
+│   └── index.html         frontend dashboard (source file — edit this for local dev; backend serves it same-origin; has both a Token Screening and a Wallet Evaluation tab)
+├── docs/aitrader/
 │   └── index.html         copy of static/index.html, for GitHub Pages publishing
 ├── outputs/
 │   ├── trade_decisions.jsonl   generated at runtime (SCREEN/FILTER/BUY/SELL/UNMONITOR log)
@@ -82,8 +83,8 @@ Open http://127.0.0.1:8000 in your browser.
 - ⚠️ Real trading is **currently only fully verified on Solana**; for EVM see "Known limitations" below.
 
 ## GitHub Pages demo
-When not on localhost (e.g. github.io) and the backend is unreachable, the frontend **automatically enters DEMO mode**: it shows sample data, displays a demo banner, sends no fetches, and cannot place orders (purely static, zero API, zero key).
-Deploy: Settings → Pages → `main` branch `/docs`. After editing the frontend, the pre-commit hook auto-syncs `static/index.html` to `docs/`.
+When not on localhost (e.g. github.io) and the backend is unreachable, the frontend **automatically enters DEMO mode**: it shows sample data, displays a demo banner, sends no fetches, and cannot place orders (purely static, zero API, zero key); the Wallet Evaluation tab likewise auto-fills a fake address and a fake result when switched to DEMO, purely to showcase the page layout — it does not represent any real data.
+Deploy: Settings → Pages → `main` branch `/docs`. After editing the frontend, the pre-commit hook auto-syncs each demo's `<demo>/static/index.html` to `docs/<demo>/index.html` (for this demo, that's `docs/aitrader/index.html`).
 
 ## Security
 - The backend binds only to 127.0.0.1 — never change it to 0.0.0.0 or expose it to the public internet.
@@ -93,6 +94,9 @@ Deploy: Settings → Pages → `main` branch `/docs`. After editing the frontend
 
 **⚠ Auto sell strategy at buy time — not yet implemented**
 The "exit plan (hard stop-loss / TP ladder / trailing stop)" shown in the frontend buy dialog is **display text only** for now (`exit_plan()`). The `swap()` that `do_buy` calls for the real order **does not pass `--condition-orders`, so no take-profit/stop-loss orders are actually placed**. After buying you can only watch manually + rely on the escape monitor + exit by hand. TODO: assemble `--condition-orders` from the TP/SL ladder and submit it together with the swap (parameter semantics / per-chain support need to be verified against the real interface).
+
+**⚠ Wallet Evaluation — known data gap in Dev detection on the Base chain**
+The `created_token_count` field used to decide "is this a token dev" can still come back as 0 on Base for wallets confirmed to have launched tokens (a GMGN backend data issue, not a bug in this project's code), which may misclassify a Base-chain dev as a regular trader and hide the Dev reputation card; sol/bsc/eth show no such issue. Score thresholds/weights are likewise heuristic placeholders, not calibrated against real PnL. See [WALLET_TAB_NOTES.md](WALLET_TAB_NOTES.md) for details.
 
 **⚠ EVM chain screening looks buggy — only Solana is fully working today**
 - **Solana**: the full path — screen / buy / sell / position monitoring — is verified (including a real signed `order quote`).

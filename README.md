@@ -16,7 +16,8 @@ Community-contributed demos built with the GMGN OpenAPI, provided for reference 
 
 | Demo | Description | Demo | Screenshot |
 |---|---|---|---|
-| [aitrader](aitrader/) | Local memecoin screening + one-click trading dashboard built on GMGN Skills/MCP: deterministic rules cast wide → scoring cuts hard → LLM only explains survivors → you press to trade. See [aitrader/README.md](aitrader/README.md) to run it locally. | https://gmgnai.github.io/skillmarket-demos/aitrader/ | <img src="static/aitrader_en.png" alt="aitrader screenshot" width="360"> |
+| [aitrader](aitrader/) — Token Screen | Local memecoin screening + one-click trading dashboard built on GMGN Skills/MCP: deterministic rules cast wide → scoring cuts hard → LLM only explains survivors → you press to trade. See [aitrader/README.md](aitrader/README.md) to run it locally. | https://gmgnai.github.io/skillmarket-demos/aitrader/ | <img src="static/aitrader_en.png" alt="aitrader screenshot" width="360"> |
+| [aitrader](aitrader/) — Wallet Evaluation | Companion tab: enter any wallet address to get trading-style tags, a Track-Record Score and a Copy-Tradeability Score, a Dev-reputation score, and a copy-trade backtest simulator — all deterministic rules, no LLM. | https://gmgnai.github.io/skillmarket-demos/aitrader/ | <img src="static/wallet_eval_en.png" alt="aitrader wallet evaluation screenshot" width="360"> |
 
 ---
 
