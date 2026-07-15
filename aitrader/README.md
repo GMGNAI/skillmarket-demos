@@ -10,6 +10,7 @@
 ## 支持的功能
 
 - **选币流水线**：`market trending` 拉趋势榜候选（行内已含尽调字段，零额外 cli）→ **确定性硬门槛**避雷（蜜罐/买卖税/rug/bundler/dev 持仓/前 10 集中度）+ 共识（聪明钱/KOL 计数）→ **趋势动能评分排序**（5m/1h 动能·买卖比·换手·共识·安全·dev）→ **LLM 只对幸存者解释**（verdict/conviction/crowdedness/thesis）→ 产出候选、代码算仓位。
+- **钱包评估 Tab**：与「代币筛选」并列的独立 Tab，输入任意钱包地址即可拆解交易风格。核心洞察：**高战绩 ≠ 你能抄到**，把「他是不是真有本事」和「你跟单能拿到多少」拆成两个分：**真实战绩分**（止损纪律主导 + 盈利面/ROI/胜率/样本量，低胜率也能高分）与**可跟单分**（进场市值/单笔利润/持仓时长 vs 你的延迟/执行可行性/优势类型）；14 种**交易风格标签**（发币方/机器人/闪电手/狙击手/钻石手/巨鲸/真高手/亏损韭菜/赌狗打法/慢工出细活/高胜率/快枪手/冷门捡漏/普通交易者，规则详见 [WALLET_TAB_NOTES.md](WALLET_TAB_NOTES.md)）；判定为发币方（自己发的币 > 交易币数一半）时复用选币侧 **Dev 信誉**评分，且真实战绩分/可跟单分自动打折（自己发的币对进场时机/胜率无参考意义）；带延迟/滑点/gas 三滑块的**跟单回测模拟器**，客户端实时镜像后端公式重算。全页面中英双语，右上角切换即时生效；确定性规则打分，**LLM 不参与**。
 - **Dev 评估维度**：对初排靠前的候选查 dev 钱包发币历史（`portfolio created-tokens`）+ 最近 N 个发币逐币安全扫描（`token security`），算出 dev 信誉分——**逐币存活率主导** + 内盘沉底/发不安全币（可增发/未弃权/未开源/貔貅）/换皮重发/已清仓减分。既是**排序子分**、又是**过滤门**：连环 rug 的工厂号、换皮重发的 dev 直接拦掉（不只是降分）。前端有 `DEV评分` 列 + 点行弹「Dev 信誉卡」（历史发币/rug 率/存活/换皮/安全风险）。
 - **持仓逃生监控**：建仓落安全快照，每轮 diff 复检（蜜罐/弃权/前 10 集中度），劣化到阈值弹「立即平仓」。与选币/风控严格分离，LLM 永远碰不到逃生路径。
 - **一键买入 / 平仓（人在环）**：通过全部闸门的候选摆成「待你决策」，只有你点按钮才成交；买入轮询确认真实成交，失败不记仓、不谎报，成交带 tx hash。
@@ -25,8 +26,8 @@ aitrader/
 ├── app.py                 FastAPI 后端 + 筛选流水线（自包含）
 ├── requirements.txt       fastapi, uvicorn
 ├── static/
-│   └── index.html         前端 dashboard（源文件，本地开发改这个，后端同源托管）
-├── docs/
+│   └── index.html         前端 dashboard（源文件，本地开发改这个，后端同源托管；含代币筛选 + 钱包评估两个 Tab）
+├── docs/aitrader/
 │   └── index.html         static/index.html 副本，供 GitHub Pages 发布
 ├── outputs/
 │   ├── trade_decisions.jsonl   运行时生成（SCREEN/FILTER/BUY/SELL/UNMONITOR 日志）
@@ -82,8 +83,8 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 - ⚠️ 真实交易**目前仅 Solana 完整验证**；EVM 见下方「已知限制」。
 
 ## GitHub Pages 演示
-非 localhost（如 github.io）连不上后端时，前端**自动进 DEMO 模式**：显示示例数据、挂演示横幅、不发任何 fetch、不能下单（纯静态、零接口、零 key）。
-部署：Settings → Pages → `main` 分支 `/docs`。改前端后 pre-commit 自动把 `static/index.html` 同步到 `docs/`。
+非 localhost（如 github.io）连不上后端时，前端**自动进 DEMO 模式**：显示示例数据、挂演示横幅、不发任何 fetch、不能下单（纯静态、零接口、零 key）；钱包评估 Tab 切到 DEMO 时同样会自动填一个假地址 + 假查询结果，仅演示页面布局，不代表任何真实数据。
+部署：Settings → Pages → `main` 分支 `/docs`。改前端后 pre-commit 自动把各 demo 的 `<demo>/static/index.html` 同步到 `docs/<demo>/index.html`（本 demo 即 `docs/aitrader/index.html`）。
 
 ## 安全
 - 后端只绑 127.0.0.1，切勿改成 0.0.0.0 或暴露公网。
@@ -93,6 +94,9 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 **⚠ 买入时的自动卖出策略 —— 尚未实现**
 前端买入弹窗显示的「退出预案（硬止损 / TP 阶梯 / 移动止损）」目前**只是展示文案**（`exit_plan()`）。`do_buy` 真实下单调的 `swap()` **没有传 `--condition-orders`，实际并没有挂任何止盈止损单**，买入后只能靠人盯盘 + 逃生监控 + 手动平仓。待办：按 TP/SL 阶梯拼 `--condition-orders` 随 swap 一并提交（参数语义/各链支持度需对照真实接口验证）。
+
+**⚠ 钱包评估 —— base 链 Dev 判定有已知数据坑**
+判定「是否发币方」用的 `created_token_count` 字段在 base 链上对已确认发过币的钱包仍可能回填成 0（GMGN 后端数据问题，非本项目代码 bug），可能导致该链上的发币方被漏判为纯交易者、不展示 Dev 信誉卡；sol/bsc/eth 未见此问题。各评分阈值/权重同样是启发式占位，未用真实盈亏回填校准。详见 [WALLET_TAB_NOTES.md](WALLET_TAB_NOTES.md)。
 
 **⚠ EVM 链筛选疑似有问题 —— 目前只有 Solana 完整跑通**
 - **Solana**：筛选 / 买 / 卖 / 持仓监控全链路已验证（含 `order quote` 实测签名）。
