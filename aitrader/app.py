@@ -211,6 +211,7 @@ class GMGNAdapter:
     def token_security(self, addr) -> dict: raise NotImplementedError
     def token_holders(self, addr) -> dict: raise NotImplementedError
     def portfolio_stats(self, wallet) -> dict: raise NotImplementedError
+    def wallet_activity(self, wallet, limit=100, cursor=None) -> dict: raise NotImplementedError  # 钱包逐笔交易（进场市值/闪买闪卖）
     def swap(self, **kw) -> dict: raise NotImplementedError
     def order_get(self, order_id) -> dict: raise NotImplementedError
     def wallet_address(self) -> str: raise NotImplementedError
@@ -221,6 +222,11 @@ class LiveGMGN(GMGNAdapter):
     def __init__(self, chain="sol"):
         self.chain = chain
         self.env = {**os.environ, **load_env()}
+        # 部分网络环境对 openapi.gmgn.ai 做 TLS 中间人检查（自定义 CA，系统 Keychain 已信任但
+        # Node 内置证书库不认），导致 gmgn-cli 报 "self-signed certificate in certificate chain"。
+        # --use-system-ca 让 Node 改走系统信任链，规避这个误判。
+        if "--use-system-ca" not in self.env.get("NODE_OPTIONS", ""):
+            self.env["NODE_OPTIONS"] = (self.env.get("NODE_OPTIONS", "") + " --use-system-ca").strip()
         self._wallet_cache: dict[str, str] = {}   # chain -> bound wallet address
 
     @staticmethod
@@ -335,7 +341,14 @@ class LiveGMGN(GMGNAdapter):
     def token_holders(self, addr):
         return self._cli("token", "holders", "--address", addr)
 
-    def portfolio_stats(self, w):   return self._cli("portfolio", "stats", "--wallet", w)
+    def portfolio_stats(self, w):   return self._cli("portfolio", "stats", "--wallet", w, "--period", "7d")
+
+    def wallet_activity(self, w, limit=100, cursor=None):
+        # 逐笔交易记录：买入行含 price_usd + token.total_supply → 进场市值；买卖时间戳配对 → 持仓时长
+        args = ["portfolio", "activity", "--wallet", w, "--limit", str(limit)]
+        if cursor:
+            args += ["--cursor", cursor]
+        return self._cli(*args)
 
     def wallet_address(self) -> str:
         """取绑定到 API Key 的本链钱包地址（swap 的 --from 必须与 Key 绑定一致）。
@@ -365,6 +378,35 @@ class LiveGMGN(GMGNAdapter):
             args += ["--amount", str(amount)]
         return self._cli(*args)
     def order_get(self, order_id):  return self._cli("order", "get", "--order-id", order_id)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Mock 钱包画像合成：按地址稳定选一种"交易风格原型"，让免 key 演示能展示多类钱包。
+# 6 种原型：狙击手 / 钻石手 / 巨鲸 / 机器人 / dev 发币方 / 亏损韭菜。字段与 LiveGMGN
+# portfolio stats / activity 输出严格同构，前端/评分逻辑对 Mock 与 Live 无需分支。
+# ──────────────────────────────────────────────────────────────────────────
+def _stable_seed(s: str) -> int:
+    # 不依赖 PYTHONHASHSEED 的稳定哈希：同一地址每次都落到同一原型 + 同一组随机数
+    return sum((i + 1) * ord(c) for i, c in enumerate(s or "x")) & 0x7FFFFFFF
+
+# 原型: (key, 中文名, 均持秒, 进场<100k占比, 5秒闪买闪卖占比, 7D笔数, 胜率, 7D盈亏USD, ROI, 单币数, 大亏占比, 是dev, 推特粉)
+_MOCK_ARCHETYPES = [
+    ("sniper",  "超低市值早期·高频狙击", 172800, 0.99, 0.23, 1895, 0.31,  12900,  0.011, 724, 0.001, False, 2930),
+    ("diamond", "精选低频·长持",         864000, 0.30, 0.01,   42, 0.57,  38000,  0.42,   61, 0.03,  False,  180),
+    ("whale",   "大额建仓·波段",         259200, 0.45, 0.02,  120, 0.49, 210000,  0.18,   88, 0.05,  False, 1200),
+    ("bot",     "全自动·科学家",          600,    0.85, 0.61, 4120, 0.52,   8300, -0.004, 610, 0.02,  False,    0),
+    ("dev",     "发币方·工厂号",          3600,   0.95, 0.00,   38, 0.05,  -4200, -0.30,   40, 0.55,  True,     0),
+    ("devgood", "正经发币方·长期项目",     259200, 0.60, 0.00,   12, 0.50,  52000,  0.35,   14, 0.08,  True,    650),
+    ("degen",   "追高接盘·赌徒",          43200,  0.80, 0.15,  380, 0.22, -15600, -0.41,  210, 0.34,  False,   90),
+]
+
+def _mock_wallet_spec(wallet: str) -> dict:
+    seed = _stable_seed(wallet)
+    a = _MOCK_ARCHETYPES[seed % len(_MOCK_ARCHETYPES)]
+    (key, style, hold_s, under100k, flip, trades, winrate, pnl, roi, tokens, big_loss, is_dev, fans) = a
+    return dict(key=key, style=style, hold_s=hold_s, under100k=under100k, flip=flip,
+                trades=trades, winrate=winrate, pnl=pnl, roi=roi, tokens=tokens,
+                big_loss=big_loss, is_dev=is_dev, fans=fans, seed=seed)
 
 
 class MockGMGN(GMGNAdapter):
@@ -457,8 +499,51 @@ class MockGMGN(GMGNAdapter):
                     open_source=True, can_not_sell=False)
 
     def created_tokens(self, wallet):
-        # 同构空壳：Mock 的发币历史在 dev_info 内直接合成（见下），此处仅满足适配器契约
-        return dict(open_count=0, inner_count=0, open_ratio=1.0, creator_ath_info={}, tokens=[])
+        # dev 原型的钱包 → 合成发币历史（供钱包评估的 dev 分支）；其余钱包 → 空壳
+        sp = _mock_wallet_spec(wallet)
+        if not sp["is_dev"]:
+            return dict(open_count=0, inner_count=0, open_ratio=1.0, creator_ath_info={}, tokens=[])
+        rnd = random.Random(sp["seed"])
+        n = sp["tokens"]; m = min(max(n, 1), 40)
+        factory = sp["big_loss"] >= 0.4                             # 高 rug 率 = 工厂号
+        surv = round(1 - sp["big_loss"], 3)                         # 存活率 = 1 - 大亏(rug)占比
+        alive_n = round(m * surv)
+        reuse = 6 if factory else 0                                 # 工厂号复用同一张 logo（换皮重发）
+        toks = [dict(token_address=f"{wallet[:6]}MT{i}", chain="sol",
+                     is_open=(i < alive_n), liquidity_less_4k=(i >= alive_n),
+                     logo=("DUP" if i < reuse else f"L{i}"),
+                     create_timestamp=2_000_000 + i) for i in range(m)]
+        inner = 1800 if factory else 25
+        return dict(open_count=n, inner_count=inner, open_ratio=surv,
+                    creator_ath_info={"ath_mc": 60_000 if factory else 500_000},
+                    tokens=toks)
+
+    def wallet_activity(self, wallet, limit=100, cursor=None):
+        # 合成逐笔交易：进场市值分布 + 5秒闪买闪卖，与 LiveGMGN portfolio activity 同构
+        sp = _mock_wallet_spec(wallet); rnd = random.Random(sp["seed"] + 7)
+        n = min(int(limit or 100), max(20, min(sp["trades"], 200)))
+        acts = []; ts = 1_783_600_000
+        for i in range(n):
+            low = rnd.random() < sp["under100k"]
+            mcap = rnd.uniform(8_000, 90_000) if low else rnd.uniform(120_000, 3_000_000)
+            supply = 1_000_000_000.0
+            price = mcap / supply
+            buy_ts = ts - i * 90
+            acts.append(dict(event_type="buy", timestamp=buy_ts,
+                             token=dict(address=f"{wallet[:5]}TK{i}", symbol=f"MK{i}",
+                                        total_supply=str(int(supply))),
+                             price_usd=str(price), gas_usd=str(round(rnd.uniform(0.05, 0.4), 4)),
+                             cost_usd=str(round(rnd.uniform(20, 400), 2))))
+            # 卖出：flip 概率下 5 秒内闪卖，否则按均持时长后卖
+            fast = rnd.random() < sp["flip"]
+            sell_ts = buy_ts + (rnd.randint(1, 5) if fast else int(sp["hold_s"] * rnd.uniform(0.4, 1.6)))
+            acts.append(dict(event_type="sell", timestamp=sell_ts,
+                             token=dict(address=f"{wallet[:5]}TK{i}", symbol=f"MK{i}",
+                                        total_supply=str(int(supply))),
+                             price_usd=str(price * rnd.uniform(0.6, 2.4)),
+                             gas_usd=str(round(rnd.uniform(0.05, 0.4), 4)),
+                             cost_usd=str(round(rnd.uniform(20, 400), 2))))
+        return dict(activities=acts, next=None)
 
     def dev_info(self, addr):
         # 与 LiveGMGN.dev_info 同构：token-info 字段 + created-tokens 发币历史（存活率/喷币量）合并
@@ -492,7 +577,32 @@ class MockGMGN(GMGNAdapter):
                     top10_concentration=d["top_10_holder_rate"])
 
     def portfolio_stats(self, wallet):
-        return dict(wallet=wallet, win_rate=0.6, realized_pnl_sol=round(random.uniform(5, 200), 1))
+        # 与 LiveGMGN portfolio stats 同构：按地址原型合成 pnl_stat 分桶 + common 元信息
+        sp = _mock_wallet_spec(wallet); rnd = random.Random(sp["seed"] + 3)
+        tn = sp["tokens"]
+        lt = max(0, round(tn * sp["big_loss"]))                     # <-50%
+        gt5 = 1 if sp["pnl"] > 30000 else 0                          # >500%
+        x25 = round(tn * (0.02 if sp["winrate"] > 0.4 else 0.005))   # 200-500%
+        wins = round(tn * sp["winrate"])
+        x02 = max(0, wins - gt5 - x25)                               # 0-200%（含小赢）
+        n50 = max(0, tn - lt - gt5 - x25 - x02)                      # -50-0%
+        buy = round(sp["trades"] * 0.53); sell = sp["trades"] - buy
+        bought = abs(sp["pnl"]) / max(0.05, abs(sp["roi"])) if sp["roi"] else sp["trades"] * 200.0
+        return dict(
+            wallet_address=wallet, native_balance=str(round(rnd.uniform(2, 400), 3)),
+            realized_profit=str(sp["pnl"]), realized_profit_pnl=str(sp["roi"]),
+            buy=buy, sell=sell, bought_cost=str(round(bought, 2)),
+            sold_income=str(round(bought + sp["pnl"], 2)), total_cost=str(round(bought, 2)),
+            last_timestamp=1_783_600_000,
+            pnl_stat=dict(token_num=tn, winrate=sp["winrate"],
+                          pnl_lt_nd5_num=lt, pnl_nd5_0x_num=n50, pnl_0x_2x_num=x02,
+                          pnl_2x_5x_num=x25, pnl_gt_5x_num=gt5,
+                          avg_holding_period=sp["hold_s"]),
+            common=dict(tags=(["smart_degen"] if sp["pnl"] > 20000 else []),
+                        created_at=1_783_600_000 - 171 * 86400,
+                        twitter_fans_num=sp["fans"], followers_count=sp["fans"],
+                        is_blue_verified=sp["fans"] > 1000,
+                        created_token_count=(sp["tokens"] if sp["is_dev"] else 0)))
 
     def wallet_address(self) -> str:
         return "MOCKWALLET1111111111111111111111111111111111"
@@ -785,6 +895,292 @@ def _fetch_dev_profiles(g: GMGNAdapter, chain: str, addrs: list[str]) -> dict[st
     with ThreadPoolExecutor(max_workers=workers) as ex:
         results = ex.map(lambda a: (a, get_dev_profile(g, chain, a)), uniq)
         return dict(results)
+
+# ──────────────────────────────────────────────────────────────────────────
+# 5b. 钱包评估（第二个 Tab）：交易风格打标签 + 真实战绩分 + 可跟单分 + 跟单回测 + dev 覆盖
+#     全部确定性、纯代码（与选币一致，LLM 不碰打分/风控）。数据源：portfolio stats + activity
+#     + created-tokens（dev 分支）。核心洞察：高战绩 ≠ 你能抄到——拆成"真有本事"和"你跟能拿到"两个分。
+# ──────────────────────────────────────────────────────────────────────────
+def _norm_wallet_stats(raw: dict) -> dict:
+    """把 gmgn-cli portfolio stats 归一化。盈亏分布分桶语义（对齐参考页）：
+    gt_5=>500% · x2_5=200–500% · x0_2=0–200% · n50_0=−50–0% · lt_n50=<−50%。"""
+    s = (raw.get("data") if isinstance(raw, dict) and isinstance(raw.get("data"), dict) else raw) or {}
+    pnl = s.get("pnl_stat") or {}
+    common = s.get("common") or {}
+    buy = int(_f(s.get("buy"))); sell = int(_f(s.get("sell")))
+    tn = int(_f(pnl.get("token_num")))
+    dist = dict(gt_5=int(_f(pnl.get("pnl_gt_5x_num"))), x2_5=int(_f(pnl.get("pnl_2x_5x_num"))),
+                x0_2=int(_f(pnl.get("pnl_0x_2x_num"))), n50_0=int(_f(pnl.get("pnl_nd5_0x_num"))),
+                lt_n50=int(_f(pnl.get("pnl_lt_nd5_num"))))
+    realized = _f(s.get("realized_profit"))
+    return dict(
+        address=s.get("wallet_address") or "",
+        native_balance=_f(s.get("native_balance")),
+        realized_profit=realized, roi=_f(s.get("realized_profit_pnl")),
+        buy=buy, sell=sell, trades=buy + sell,
+        bought_cost=_f(s.get("bought_cost")), sold_income=_f(s.get("sold_income")),
+        avg_buy_usd=(_f(s.get("bought_cost")) / buy if buy else 0.0),
+        avg_trade_usd=(realized / sell if sell else 0.0),   # 均每笔（按已平仓笔算）
+        token_num=tn, winrate=_f(pnl.get("winrate")), dist=dist,
+        avg_hold_s=_f(pnl.get("avg_holding_period")),
+        name=(common.get("name") or common.get("nick_name") or common.get("twitter_name")
+              or common.get("ens") or ""),
+        tags=common.get("tags") or [],
+        created_at=_f(common.get("created_at")),
+        twitter_fans=int(_f(common.get("twitter_fans_num") or common.get("followers_count"))),
+        is_verified=bool(common.get("is_blue_verified")),
+        created_token_count=int(_f(common.get("created_token_count"))),
+    )
+
+def _activity_summary(raw: dict) -> dict:
+    """从逐笔 activity 抽样算：进场市值分布（<$100k 占比、中位数）+ 5 秒闪买闪卖占比 + 均 gas。"""
+    acts = []
+    if isinstance(raw, dict):
+        acts = raw.get("activities") or (raw.get("data") or {}).get("activities") or []
+    mcaps = []
+    for a in acts:
+        if a.get("event_type") != "buy":
+            continue
+        tok = a.get("token") or {}
+        supply = _f(tok.get("total_supply")); px = _f(a.get("price_usd"))
+        if supply > 0 and px > 0:
+            mcaps.append(px * supply)
+    mcaps.sort()
+    under_100k = (sum(1 for m in mcaps if m < 100_000) / len(mcaps)) if mcaps else 0.0
+    median_mcap = mcaps[len(mcaps) // 2] if mcaps else 0.0
+    # 闪买闪卖：按 token 配对 buy→其后首个 sell，间隔 ≤5 秒计一次 flip
+    by_tok: dict = {}
+    for a in acts:
+        by_tok.setdefault((a.get("token") or {}).get("address"), []).append(a)
+    pairs = fast = 0
+    for evs in by_tok.values():
+        evs = sorted(evs, key=lambda e: _f(e.get("timestamp")))
+        last_buy = None
+        for e in evs:
+            if e.get("event_type") == "buy":
+                last_buy = _f(e.get("timestamp"))
+            elif e.get("event_type") == "sell" and last_buy is not None:
+                pairs += 1
+                if _f(e.get("timestamp")) - last_buy <= 5:
+                    fast += 1
+                last_buy = None
+    gas = [_f(a.get("gas_usd")) for a in acts if _f(a.get("gas_usd")) > 0]
+    return dict(sampled=len(acts), entry_under_100k=round(under_100k, 4),
+                median_entry_mcap=round(median_mcap, 2),
+                fast_flip_rate=round(fast / pairs, 4) if pairs else 0.0,
+                avg_gas_usd=round(sum(gas) / len(gas), 4) if gas else 0.0)
+
+def wallet_tags(w: dict, summ: dict, dev: dict | None) -> list:
+    """按交易风格打通俗标签（确定性规则）。每个标签带 emoji + 一句大白话，中英双语（见 name/desc
+    与 name_en/desc_en）——前端按当前语言直接挑一份展示，切换语言瞬时生效，不必重新查询。可命中多个。"""
+    tags = []
+    def add(emoji, name, desc, name_en, desc_en):
+        tags.append(dict(emoji=emoji, name=name, desc=desc, name_en=name_en, desc_en=desc_en))
+    trades, tn = w["trades"], max(1, w["token_num"])
+    big_win = (w["dist"]["gt_5"] + w["dist"]["x2_5"]) / tn
+    big_loss = w["dist"]["lt_n50"] / tn
+    early = summ["entry_under_100k"]; flip = summ["fast_flip_rate"]
+    # dev 优先（发币方）：dev 仅在"发币数 > 交易币数一半"时才由端点传入（见 api_wallet），
+    # 故顺手发过一两个币、主要在交易的钱包不会被误标为发币方。
+    # dev is not None 时（发币数>交易币数一半），进场时机/胜率类标签对"自己发的币"没有参考意义——
+    # 自己发的币想多早进场就多早、想多低市值就多低，不是选币眼光。狙击手/高胜率/冷门捡漏这三个
+    # 标签直接抑制掉，换成「自产自销」说明这种行为模式（用户指正：这类地址需要单独定义标签）。
+    if dev is not None:
+        rug = dev.get("rug_rate", 0.0)
+        pct = round(w["created_token_count"] / max(1, w["token_num"]) * 100)
+        cnt = w['created_token_count'] or dev.get('analyzed', 0)
+        rug_zh = f"，rug 率 {round(rug*100)}%（工厂号嫌疑）" if rug >= 0.5 else "，看 Dev 信誉分"
+        rug_en = f", rug rate {round(rug*100)}% (factory suspect)" if rug >= 0.5 else ", check the Dev-reputation score"
+        add("🏭", "发币方 / Dev", f"发过 {cnt} 个币（占交易 {min(pct,100)}%+）" + rug_zh,
+            "Token creator / Dev", f"Launched {cnt} tokens (≥{min(pct,100)}% of its traded tokens)" + rug_en)
+        add("🏗️", "自产自销", f"交易的币里 {min(pct,100)}%+ 是自己发的——进场时机/胜率对自己发的币没意义，别看这类标签",
+            "Self-dealer", f"≥{min(pct,100)}% of its traded tokens are its own launches — entry timing/win-rate mean nothing on its own tokens, ignore those tags")
+    # 交易风格
+    if trades >= 2000:
+        add("🤖", "机器人 / 科学家", f"7D {trades} 笔，人手根本跟不上，只能机器跟",
+            "Bot / Quant", f"{trades} trades in 7D — no human keeps up with that, only a bot can")
+    if flip >= 0.3:
+        add("⚡", "闪电手", f"{round(flip*100)}% 的仓位 5 秒内买卖，抢的是速度不是判断",
+            "Flash flipper", f"{round(flip*100)}% of positions bought & sold within 5s — racing on speed, not judgment")
+    if dev is None and early >= 0.8:
+        add("🎯", "狙击手", f"{round(early*100)}% 进场市值 <$100k，专抢刚开盘的超早期",
+            "Sniper", f"{round(early*100)}% of entries are <$100k mcap — hunting the earliest possible entries")
+    if w["avg_hold_s"] >= 5 * 86400 and trades < 200:
+        add("💎", "钻石手", "持仓久、下手少，拿得住", "Diamond hands", "Holds long, trades rarely — has conviction")
+    if w["avg_buy_usd"] >= 5000:
+        add("🐋", "巨鲸", f"单笔平均建仓 ${round(w['avg_buy_usd']):,}，体量大",
+            "Whale", f"Avg position size ${round(w['avg_buy_usd']):,} — moves real size")
+    if dev is None and w["winrate"] >= 0.65 and trades >= 15:
+        add("🏆", "高胜率", f"{round(w['winrate']*100)}% 的币最终是赚的，选币眼光稳",
+            "High win-rate", f"{round(w['winrate']*100)}% of tokens ended up profitable — picks well")
+    if 0 < w["avg_hold_s"] < 3600 and flip < 0.3 and trades >= 30:
+        add("🐇", "快枪手", f"平均持仓 {_fmt_dur(w['avg_hold_s'],'zh')}，进出快但不是纯秒级对倒",
+            "Quick-draw", f"Avg hold {_fmt_dur(w['avg_hold_s'],'en')} — in and out fast, but not pure second-level flipping")
+    if dev is None and 0 < summ["median_entry_mcap"] < 30000:
+        add("🔦", "冷门捡漏", f"中位进场市值仅 ${round(summ['median_entry_mcap']):,}，专挑没人关注的小币",
+            "Obscure hunter", f"Median entry mcap only ${round(summ['median_entry_mcap']):,} — hunts tokens nobody's watching")
+    # 结果画像
+    if w["realized_profit"] > 20000 and big_loss <= 0.05:
+        add("📈", "真高手", "净赚且极少大亏，止损纪律好", "True skill", "Net profitable with very few big losses — solid stop-loss discipline")
+    elif big_loss >= 0.3 and w["realized_profit"] < 0:
+        add("🩸", "亏损韭菜", f"{round(big_loss*100)}% 的币亏超 50%，长期净亏",
+            "Bag holder", f"{round(big_loss*100)}% of tokens lost over 50% — net losing long-term")
+    elif big_win >= 0.02 and w["winrate"] < 0.35 and w["realized_profit"] > 0:
+        add("🎰", "赌狗打法", "胜率低但靠少数暴击回本，波动极大",
+            "Gambler", "Low win-rate but a few huge hits carry the P&L — highly volatile style")
+    if trades < 60 and w["realized_profit"] > 0 and flip < 0.1:
+        add("🐌", "慢工出细活", "低频、可复制，最适合跟单", "Slow & steady", "Low frequency, repeatable — the easiest style to copy")
+    if not tags:
+        add("🧭", "普通交易者", "没有特别突出的风格标签", "Regular trader", "No standout style tags")
+    return tags
+
+WALLET_CFG = dict(
+    track_w=dict(tail=0.34, upside=0.28, roi=0.16, win=0.10, size=0.12),  # 真实战绩·因子权重
+    copy_w=dict(entry=0.22, profit=0.22, hold=0.20, feasible=0.18, edge=0.18),  # 可跟单·因子权重
+    low_mcap_drift_per_s=0.015,   # 低市值币每秒价格漂移（延迟越久，你追进去越贵）
+    self_deal_discount=0.45,      # 自产自销折算：大多数交易是自己发的币时，进场时机/胜率类因子
+                                   # 都是自己说了算，真实战绩分·可跟单分参考意义大打折扣——大幅打折但保留数字
+)
+
+def _discount_self_dealing(score: dict) -> dict:
+    """该地址大多数交易的是自己发的币（见 api_wallet 的 dev 判定门槛）：进场时机/胜率类因子失真，
+    大幅打折但保留数字（不隐藏），前端据此展示提示。"""
+    d = dict(score)
+    d["score"] = round(d["score"] * WALLET_CFG["self_deal_discount"])
+    d["self_dealing"] = True
+    return d
+
+def track_record_score(w: dict) -> dict:
+    """真实战绩分：这交易员是不是真有本事（按盈亏分布调整）。低胜率也能高分——只要大亏极少、
+    净利为正（= 止损纪律好）。因子各 0..100，加权得总分。"""
+    tn = max(1, w["token_num"]); d = w["dist"]
+    tail = 1 - d["lt_n50"] / tn                                   # 大亏(<−50%)越少越好 = 止损纪律
+    upside = (d["gt_5"] + d["x2_5"] + d["x0_2"]) / tn             # 有多少币最终是赚的
+    roi = _clamp((w["roi"] + 0.05) / 0.35)                        # ROI −5%→0，+30%→满
+    win = _clamp(w["winrate"] / 0.5)                              # 胜率 50%→满（低权重）
+    size = _clamp((tn - 20) / 300)                               # 样本量置信
+    wt = WALLET_CFG["track_w"]
+    facs = dict(tail=tail, upside=upside, roi=roi, win=win, size=size)
+    score = round(100 * sum(wt[k] * _clamp(v) for k, v in facs.items()))
+    labels = dict(tail="止损纪律", upside="盈利面", roi="资金回报", win="胜率", size="样本量")
+    labels_en = dict(tail="Stop-loss discipline", upside="Profit share", roi="Capital ROI",
+                      win="Win rate", size="Sample size")
+    factors = [dict(key=k, name=labels[k], name_en=labels_en[k], score=round(100 * _clamp(v)), weight=wt[k])
+               for k, v in facs.items()]
+    return dict(score=score, factors=factors)
+
+def copytrade_score(w: dict, summ: dict) -> dict:
+    """可跟单分：你跟进后能拿到多少（≠ 他多能赚）。5 个扣分因子（对齐参考页）：
+    进场市值太早→你接盘 · 单笔利润太薄→滑点gas吃光 · 持仓太短→跟不上 · 笔数太多→只能机器跟 · 靠速度=不可复制。"""
+    entry = _clamp(0.12 + (1 - summ["entry_under_100k"]))                 # 进场越早分越低
+    profit = _clamp(w["avg_trade_usd"] / 80.0)                            # 均每笔越薄分越低
+    hold = _clamp((1 - summ["fast_flip_rate"] * 1.6)
+                  * _clamp(w["avg_hold_s"] / 172800 + 0.15))              # 闪买闪卖/持仓极短→跟不上
+    feasible = _clamp(1 - w["trades"] / 2500.0)                          # 笔数越多越只能机器跟
+    edge = _clamp(1 - 0.6 * summ["entry_under_100k"] - 0.6 * summ["fast_flip_rate"])  # 靠速度/规模化薄利=难复制
+    wt = WALLET_CFG["copy_w"]
+    facs = dict(entry=entry, profit=profit, hold=hold, feasible=feasible, edge=edge)
+    score = round(100 * sum(wt[k] * v for k, v in facs.items()))
+    meta = dict(entry=("进场市值", f"{round(summ['entry_under_100k']*100)}% <$100k"
+                       + ("，太早只能接盘" if summ['entry_under_100k'] > 0.7 else "")),
+                profit=("单笔利润空间", f"均每笔 ${round(w['avg_trade_usd'],2)}"
+                        + ("，滑点+gas 吃光" if w['avg_trade_usd'] < 30 else "")),
+                hold=("持仓 vs 延迟", f"均持 {_fmt_dur(w['avg_hold_s'],'zh')}，"
+                      f"{round(summ['fast_flip_rate']*100)}% 是 5 秒内"),
+                feasible=("执行可行性", f"7天 {w['trades']} 笔"
+                          + ("，只能机器跟" if w['trades'] > 1000 else "")),
+                edge=("优势类型", "靠速度/规模化薄利 = 身份"
+                      if (summ['entry_under_100k'] > 0.7 or summ['fast_flip_rate'] > 0.3)
+                      else "靠选币/择时 = 可学"))
+    meta_en = dict(entry=("Entry mcap", f"{round(summ['entry_under_100k']*100)}% <$100k"
+                          + (", too early — you'd be the exit liquidity" if summ['entry_under_100k'] > 0.7 else "")),
+                   profit=("Profit per trade", f"avg ${round(w['avg_trade_usd'],2)}/trade"
+                           + (", slippage+gas eats it all" if w['avg_trade_usd'] < 30 else "")),
+                   hold=("Hold vs latency", f"avg hold {_fmt_dur(w['avg_hold_s'],'en')}, "
+                         f"{round(summ['fast_flip_rate']*100)}% within 5s"),
+                   feasible=("Execution feasibility", f"{w['trades']} trades/7D"
+                             + (", only a bot can keep up" if w['trades'] > 1000 else "")),
+                   edge=("Edge type", "Speed/scale on thin margins = his identity"
+                         if (summ['entry_under_100k'] > 0.7 or summ['fast_flip_rate'] > 0.3)
+                         else "Picking/timing = learnable"))
+    factors = [dict(key=k, name=meta[k][0], name_en=meta_en[k][0], score=round(100 * v),
+                     note=meta[k][1], note_en=meta_en[k][1], weight=wt[k])
+               for k, v in facs.items()]
+    return dict(score=score, factors=factors)
+
+def copytrade_backtest(w: dict, summ: dict, latency_s: float, slippage_pct: float, gas_usd: float) -> dict:
+    """跟单回测：跟单单笔 = 钱包单笔% − 延迟漂移 − 双边滑点 − gas。
+    低市值币延迟漂移最狠（你晚 N 秒进场，价格已被抢高）。抄单陷阱敞口 = 钱包 7D − 跟单者 7D。"""
+    wallet_pct = (w["realized_profit"] / w["bought_cost"]) if w["bought_cost"] > 0 else w["roi"]
+    # 钳制到合理区间：dev/发币钱包的 bought_cost 极小 → 原始比值会爆到几千%，跟单叙事失真。
+    wallet_pct = _clamp(wallet_pct or 0.0001, -0.9, 3.0)
+    drift_per_s = WALLET_CFG["low_mcap_drift_per_s"] * (0.3 + 0.7 * summ["entry_under_100k"])
+    drift = latency_s * drift_per_s
+    slip = 2 * slippage_pct                                        # 双边（进+出）
+    gas_pct = (gas_usd / w["avg_buy_usd"]) if w["avg_buy_usd"] > 0 else 0.0
+    copy_pct = wallet_pct - drift - slip - gas_pct
+    wallet_7d = w["realized_profit"]
+    copy_7d = wallet_7d * (copy_pct / wallet_pct) if wallet_pct else 0.0
+    return dict(latency_s=latency_s, slippage_pct=slippage_pct, gas_usd=gas_usd,
+                wallet_pct=round(wallet_pct, 4), copy_pct=round(copy_pct, 4),
+                drift=round(drift, 4), slip=round(slip, 4), gas_pct=round(gas_pct, 4),
+                wallet_7d=round(wallet_7d, 1), copy_7d=round(copy_7d, 1),
+                trap=round(wallet_7d - copy_7d, 1))
+
+def wallet_dev_profile(g: GMGNAdapter, chain: str, wallet: str) -> dict | None:
+    """钱包的 dev 信誉画像：复用选币侧的 dev_score（存活率主导 + 内盘沉底/换皮/安全扫描减分）。
+    数据源为该钱包的 created-tokens。非发币钱包（无发币历史）返回 None。"""
+    try:
+        ct = g.created_tokens(wallet)
+    except Exception:
+        return None
+    ctd = ct.get("data", ct) if isinstance(ct, dict) else {}
+    toks = ctd.get("tokens") or []
+    if not toks and int(_f(ctd.get("open_count"))) == 0 and int(_f(ctd.get("inner_count"))) == 0:
+        return None                                               # 非发币钱包
+    dp: dict = {}
+    _merge_created(dp, ctd)
+    scan = getattr(g, "_scan_dev_security", None)                 # Live 有逐币安全扫描；Mock 跳过
+    if callable(scan):
+        try:
+            scan(dp)
+        except Exception:
+            dp.pop("_recent", None)
+    else:
+        dp.pop("_recent", None)
+    dp["score"] = dev_score(dp)
+    return dp
+
+def _fmt_dur(sec: float, lang: str = "zh") -> str:
+    sec = _f(sec)
+    units = dict(zh=(" 秒", " 分", " 小时", " 天"), en=("s", "m", "h", "d"))[lang]
+    if sec < 60: return f"{int(sec)}{units[0]}"
+    if sec < 3600: return f"{round(sec/60)}{units[1]}"
+    if sec < 86400: return f"{round(sec/3600,1)}{units[2]}"
+    return f"{round(sec/86400,1)}{units[3]}"
+
+def wallet_verdict(w: dict, track: dict, copy: dict, dev: dict | None) -> dict:
+    """一句话结论（确定性规则，非 LLM）：高战绩+低可跟单 → 学纪律别抄入场；等。text/text_en 双语，
+    前端按当前语言直接挑一份展示。"""
+    ts, cs = track["score"], copy["score"]
+    if dev is not None:
+        ds = round((dev.get("score") or 0) * 100)
+        if ds < 40:
+            return dict(tone="bad", text=f"发币方钱包，Dev 信誉仅 {ds}/100（连环 rug / 换皮嫌疑）—— 别碰它发的新盘。",
+                        text_en=f"Token-creator wallet, Dev reputation only {ds}/100 (serial-rug / reskin suspect) — stay away from its new launches.")
+        return dict(tone="ok", text=f"发币方钱包，Dev 信誉 {ds}/100 —— 看它的存活率与安全记录再决定。",
+                    text_en=f"Token-creator wallet, Dev reputation {ds}/100 — check its survival rate and security record before deciding.")
+    if ts >= 65 and cs < 35:
+        return dict(tone="warn", text="高战绩、低可跟单 —— 学他的止损纪律，别抄他的入场；延迟和滑点会把薄利吃成负。",
+                    text_en="High track record, low copy-tradeability — learn his stop-loss discipline, don't copy his entries; latency and slippage will turn thin profit negative.")
+    if ts >= 60 and cs >= 55:
+        return dict(tone="good", text="战绩真实且可跟单性高 —— 低频、进场不算太早，值得小额跟一跟验证。",
+                    text_en="Genuine track record and high copy-tradeability — low frequency, entries not too early, worth a small copy-trade to verify.")
+    if ts < 40:
+        return dict(tone="bad", text="战绩一般偏弱 —— 不建议作为跟单对象。",
+                    text_en="Weak track record — not recommended as a copy-trade target.")
+    return dict(tone="ok", text="战绩中等 —— 可观察，跟单前先小额验证延迟/滑点损耗。",
+                text_en="Middling track record — worth watching; verify latency/slippage cost with a small trade before copying.")
 
 # ──────────────────────────────────────────────────────────────────────────
 # 6. LLM 判断（只对幸存者；占位启发式，标注真实接入点）
@@ -1331,6 +1727,16 @@ def do_unmonitor(address: str) -> dict:
 # ──────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="GMGN AI Trader (local)")
 
+@app.middleware("http")
+async def _no_cache(request, call_next):
+    """本地开发工具：禁用一切缓存，改前端 index.html 后普通刷新即生效（不用硬刷 Cmd+Shift+R）。
+    对 API 响应无副作用（本就是动态数据）；仅本机后端，不涉及 CDN/公网缓存。"""
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
 class ConfigIn(BaseModel):
     api_key: str = ""        # 留空则沿用环境里已有的 key（不覆盖）
     signing_key: str = ""
@@ -1357,6 +1763,14 @@ class ChainIn(BaseModel):
 
 class ModeIn(BaseModel):
     mode: str                # "LIVE" | "SHADOW"
+
+class WalletIn(BaseModel):
+    chain: str = "sol"
+    address: str
+    latency_s: float = 3.0       # 跟单回测：你比钱包晚几秒进场
+    slippage_pct: float = 0.05   # 单边滑点（回测按双边计）
+    gas_usd: float = 0.2         # 每笔 gas
+    sample: int = 200            # 逐笔 activity 抽样上限（最近 N 笔）
 
 def _block_if_public():
     """公开演示为只读：所有写操作（含触发 CLI / 改配置 / 买卖）一律拒绝。"""
@@ -1462,6 +1876,56 @@ def api_run(r: RunIn):
             return JSONResponse(screen_once(ch))
         except Exception as e:
             raise HTTPException(502, f"扫描失败：{e}")
+
+def _sample_activity(g: GMGNAdapter, addr: str, target: int) -> dict:
+    """抽样最近 N 笔逐笔交易：翻页累积到 target（或翻页耗尽），最多 4 页防止烧配额。"""
+    target = max(20, min(int(target or 200), 400))
+    acts: list = []; cursor = None
+    for _ in range(4):
+        raw = g.wallet_activity(addr, limit=min(100, target - len(acts)), cursor=cursor)
+        data = raw.get("data", raw) if isinstance(raw, dict) else {}
+        page = data.get("activities") or []
+        acts.extend(page)
+        cursor = data.get("next") or data.get("cursor") or data.get("next_cursor")
+        if not cursor or not page or len(acts) >= target:
+            break
+    return dict(activities=acts[:target])
+
+@app.post("/api/wallet")
+def api_wallet(w: WalletIn):
+    """钱包评估：交易风格标签 + 真实战绩分 + 可跟单分 + 跟单回测（+ dev 信誉，若为发币钱包）。"""
+    _block_if_public()
+    ch = valid_chain(w.chain)
+    addr = (w.address or "").strip()
+    if not addr:
+        raise HTTPException(400, "缺少钱包地址")
+    g = ST.adapter_for(ch)
+    try:
+        raw_stats = g.portfolio_stats(addr)
+    except Exception as e:
+        raise HTTPException(502, f"查询钱包统计失败：{e}")
+    stats = _norm_wallet_stats(raw_stats)
+    try:
+        summ = _activity_summary(_sample_activity(g, addr, w.sample))
+    except Exception:
+        summ = dict(sampled=0, entry_under_100k=0.0, median_entry_mcap=0.0,
+                    fast_flip_rate=0.0, avg_gas_usd=0.0)
+    # 认定"发币方钱包"：自己发的币数 > 交易过的币数的一半，才算 dev（否则只是顺手发过币的交易者）。
+    # 满足才查 dev 信誉（省一次 cli），并据此打「发币方 / Dev」标签 + 展示 Dev 信誉卡。
+    ctc, tnum = stats["created_token_count"], max(1, stats["token_num"])
+    dev = wallet_dev_profile(g, ch, addr) if (ctc > 0 and ctc > 0.5 * tnum) else None
+    tags = wallet_tags(stats, summ, dev)
+    track = track_record_score(stats)
+    copy = copytrade_score(stats, summ)
+    if dev is not None:
+        track = _discount_self_dealing(track)
+        copy = _discount_self_dealing(copy)
+    bt = copytrade_backtest(stats, summ, w.latency_s, w.slippage_pct, w.gas_usd)
+    verdict = wallet_verdict(stats, track, copy, dev)
+    return JSONResponse(dict(
+        chain=ch, address=addr, live=ST.is_live_adapter,
+        stats=stats, activity=summ, tags=tags,
+        track=track, copy=copy, backtest=bt, dev=dev, verdict=verdict))
 
 @app.post("/api/buy")
 def api_buy(b: BuyIn):

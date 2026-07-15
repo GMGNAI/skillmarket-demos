@@ -282,6 +282,107 @@ td{padding:5px 10px;vertical-align:middle}
 .toast.ok{background:var(--lime-d)}.toast.err{background:var(--clay)}
 .spin{display:inline-block;width:12px;height:12px;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px;margin-right:6px}
 @keyframes sp{to{transform:rotate(360deg)}}
+
+/* ═══ 视图 Tab 切换（代币筛选 / 钱包评估）═══ */
+.viewtabs{display:flex;gap:6px;background:var(--ink2);border:1px solid var(--line);border-radius:11px;padding:4px}
+.viewtabs button{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--dim);background:none;border:1px solid transparent;border-radius:8px;padding:7px 15px;cursor:pointer;letter-spacing:.02em;transition:.15s}
+.viewtabs button:hover{color:var(--paper2)}
+.viewtabs button.on{color:var(--lime);border-color:var(--lime);background:#c8f24a12}
+.view{flex:1;min-height:0}
+#viewToken{display:flex;flex-direction:column;gap:9px}
+#viewWallet{display:block;overflow-y:auto;overflow-x:hidden}
+
+/* ═══ 钱包评估视图 ═══ */
+.wlt{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:32px;padding-bottom:24px}
+/* renderWallet() 把头部卡/三分卡/因子卡/回测卡/结论条都塞进 #wltResult 这一个 div 里，
+   它们是 #wltResult 的子元素、只是 .wlt 的孙元素——之前只给 .wlt 加 gap 对这些卡片之间的间距
+   完全不生效（那个 gap 只隔开了 .wlt-search 和 #wltResult 整体）。真正要加 gap 的是这里。 */
+#wltResult{display:flex;flex-direction:column;gap:32px}
+.wlt-search{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.wlt-search input{flex:1;min-width:280px;font-family:var(--mono);font-size:13px;color:var(--paper);background:var(--ink2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;outline:none}
+.wlt-search input:focus{border-color:var(--lime)}
+.wlt-search .go{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--ink);background:var(--lime);border:none;border-radius:10px;padding:12px 22px;cursor:pointer;letter-spacing:.03em}
+.wlt-search .go:hover{background:#d6ff5e}
+.wlt-search .go:disabled{opacity:.5;cursor:default}
+.wlt-empty{color:var(--dim);text-align:center;padding:60px 20px;font-size:13px;line-height:2}
+.wlt-card{border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--panel2),var(--panel));padding:24px 26px}
+.wlt-card h4{font-family:var(--disp);font-weight:800;font-size:13px;letter-spacing:.02em;color:var(--paper2);margin-bottom:14px;text-transform:uppercase}
+
+/* 头部卡 */
+.wh-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.wh-id{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.wh-name{font-family:var(--disp);font-weight:800;font-size:24px;letter-spacing:-.01em}
+.wh-chain{font-size:10px;font-weight:700;color:var(--ink);background:var(--amber);border-radius:5px;padding:2px 7px;letter-spacing:.05em}
+.wh-meta{font-size:12px;color:var(--dim);letter-spacing:.02em}
+.wh-pnl{font-family:var(--disp);font-weight:800;font-size:26px;text-align:right}
+.wh-pnl .roi{font-size:12px;font-weight:600;color:var(--dim);margin-left:8px}
+.wh-tags{display:flex;gap:7px;flex-wrap:wrap;margin:15px 0 4px}
+.wh-tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);background:var(--ink2);border-radius:8px;padding:6px 11px}
+.wh-tag .em{font-size:14px}
+.wh-tag b{color:var(--paper)}
+.wh-tag i{color:var(--dim);font-style:normal;font-size:11px;border-left:1px solid var(--line2);padding-left:7px;margin-left:1px}
+.wh-stats{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:16px}
+.wh-stat{background:var(--ink2);padding:11px 13px}
+.wh-stat .k{font-size:10px;color:var(--dim);letter-spacing:.04em}
+.wh-stat .v{font-family:var(--disp);font-weight:700;font-size:16px;margin-top:5px}
+.wh-dist{margin-top:15px}
+.wh-distbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--raise)}
+.wh-distbar span{display:block}
+.wh-distleg{font-size:11px;color:var(--dim);margin-top:8px;letter-spacing:.02em}
+.wh-distleg b{color:var(--paper2)}
+
+/* 双分 */
+.wlt-scores-block{display:flex;flex-direction:column;gap:9px}
+.wlt-scores{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.wlt-selfdeal{font-size:11.5px;color:var(--amber)}
+.ws-num{font-family:var(--disp);font-weight:800;font-size:58px;line-height:.9}
+.ws-num i{font-size:20px;color:var(--dim);font-style:normal}
+.ws-lbl{font-size:12px;color:var(--paper2);font-weight:600;letter-spacing:.02em;margin-bottom:12px}
+.ws-sub{font-size:11.5px;color:var(--dim);margin-top:10px}
+.ws-track{height:7px;border-radius:4px;background:var(--raise);margin-top:14px;overflow:hidden}
+.ws-track i{display:block;height:100%;border-radius:4px}
+.ws-toggle{display:flex;gap:6px;margin:16px 0 4px}
+.ws-toggle button{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--dim);background:var(--ink2);border:1px solid var(--line);border-radius:8px;padding:6px 13px;cursor:pointer}
+.ws-toggle button.on{color:var(--paper)}
+.ws-toggle button.on.trk{border-color:var(--lime);color:var(--lime);background:#c8f24a10}
+.ws-toggle button.on.cpy{border-color:var(--clay);color:var(--clay);background:#ec5a4010}
+.ws-toggle button.on.dev{border-color:var(--teal);color:var(--teal);background:#5fb4c410}
+.wf-row{margin-top:16px}
+.wf-head{display:flex;justify-content:space-between;font-size:13px}
+.wf-head b{font-weight:600;color:var(--paper)}
+.wf-head .sc{font-family:var(--disp);font-weight:800}
+.wf-bar{height:5px;border-radius:3px;background:var(--raise);margin-top:7px;overflow:hidden}
+.wf-bar i{display:block;height:100%;border-radius:3px}
+.wf-note{font-size:11px;color:var(--dim);margin-top:6px}
+
+/* 跟单回测 */
+.wbt{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+.wbt-form{display:flex;flex-direction:column;gap:16px}
+.wbt-sl label{display:flex;justify-content:space-between;font-size:12.5px;color:var(--paper2);margin-bottom:8px}
+.wbt-sl label b{font-family:var(--disp);font-weight:700;color:var(--amber);font-size:14px}
+.wbt-sl input[type=range]{width:100%;-webkit-appearance:none;height:5px;border-radius:3px;background:var(--raise);outline:none}
+.wbt-sl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--lime);cursor:pointer;box-shadow:0 0 0 3px #c8f24a30}
+.wbt-formula{font-size:11px;color:var(--dim);line-height:1.7;margin-bottom:4px}
+.wbt-res{display:flex;flex-direction:column;gap:12px}
+.wbt-net{font-size:12.5px;color:var(--paper2)}
+.wbt-net b{font-family:var(--disp);font-weight:800;font-size:15px}
+.wbt-cmp .lbl{font-size:11px;color:var(--dim);margin-bottom:7px}
+.wbt-barrow{display:flex;align-items:center;gap:12px}
+.wbt-mbar{flex:1;height:9px;border-radius:5px;background:var(--raise);position:relative;overflow:hidden}
+.wbt-mbar i{position:absolute;top:0;left:0;height:100%;border-radius:5px}
+.wbt-barrow em{font-family:var(--disp);font-weight:800;font-size:14px;font-style:normal;white-space:nowrap;min-width:64px;text-align:right}
+.wbt-trap{border:1px solid var(--clay);background:#ec5a400f;border-radius:10px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.wbt-trap .k{font-size:12.5px;color:var(--paper2);font-weight:600}
+.wbt-trap .v{font-family:var(--disp);font-weight:800;font-size:20px;color:var(--clay)}
+
+/* 结论 + dev 卡 */
+.wlt-verdict{border-radius:12px;padding:16px 20px;display:flex;justify-content:space-between;gap:16px;align-items:center;font-size:13.5px;line-height:1.6}
+.wlt-verdict.good{border:1px solid var(--lime);background:#c8f24a0e}
+.wlt-verdict.ok{border:1px solid var(--line);background:var(--ink2)}
+.wlt-verdict.warn{border:1px solid var(--amber);background:#f0a93b0e}
+.wlt-verdict.bad{border:1px solid var(--clay);background:#ec5a400e}
+.wlt-verdict .badge{font-size:11px;font-weight:700;color:var(--amber);white-space:nowrap;letter-spacing:.04em}
+.wlt-err{color:var(--clay);font-size:12.5px;padding:14px 0}
 </style>
 </head>
 <body>
@@ -295,6 +396,10 @@ td{padding:5px 10px;vertical-align:middle}
     <div class="bar-l">
       <div class="logo" id="ic-logo"></div>
       <div><h1>AI&nbsp;TRADER<i>//</i><span data-i18n="h1_suffix">筛选 + 一键成交</span></h1><div class="tag" data-i18n="tag">确定性规则抓全 · ML 砍狠 · LLM 只解释幸存者 · 你按下成交</div></div>
+      <div class="viewtabs">
+        <button id="tabToken" class="on" onclick="switchView('token')" data-i18n="tab_token">代币筛选</button>
+        <button id="tabWallet" onclick="switchView('wallet')" data-i18n="tab_wallet">钱包评估</button>
+      </div>
     </div>
     <div class="bar-r">
       <div class="clock" id="clock">--:--:--</div>
@@ -315,6 +420,7 @@ td{padding:5px 10px;vertical-align:middle}
     </div>
   </div>
 
+  <div id="viewToken" class="view">
   <div class="kpis" id="kpis"></div>
 
   <div class="grid">
@@ -347,6 +453,17 @@ td{padding:5px 10px;vertical-align:middle}
         <div class="funnel" id="funnel"></div>
         <div class="riskmini" id="riskmini"></div>
       </div>
+    </div>
+  </div>
+  </div><!-- /#viewToken -->
+
+  <div id="viewWallet" class="view" style="display:none">
+    <div class="wlt">
+      <div class="wlt-search">
+        <input id="wltAddr" data-i18n-ph="wlt_ph" placeholder="粘贴钱包地址（当前链）… 交易钱包 / dev 发币钱包都可评估" onkeydown="if(event.key==='Enter')runWallet()">
+        <button class="go" id="wltGo" onclick="runWallet()" data-i18n="wlt_go">评估</button>
+      </div>
+      <div id="wltResult"><div class="wlt-empty" data-i18n="wlt_empty">输入一个钱包地址 → 交易风格标签 · 真实战绩分 · 可跟单分 · 跟单回测 · Dev 信誉</div></div>
     </div>
   </div>
 </div>
@@ -410,6 +527,9 @@ td{padding:5px 10px;vertical-align:middle}
 const I18N={
   zh:{
     title:'AI Trader - 自动筛选，一键成交，持仓监控',
+    tab_token:'代币筛选', tab_wallet:'钱包评估',
+    wlt_ph:'粘贴钱包地址（当前链）… 交易钱包 / dev 发币钱包都可评估', wlt_go:'评估',
+    wlt_empty:'输入一个钱包地址 → 交易风格标签 · 真实战绩分 · 可跟单分 · 跟单回测 · Dev 信誉',
     demobar:'⚠ <b>演示模式</b> · 示例数据，<b>非 GMGN 官方交易功能，不构成投资建议</b> · 想接真实链上数据，请 clone 源码本地运行（自配 API Key，买卖仅在你本机执行） · <a href="https://github.com/GMGNAI/skillmarket-demos/tree/main/aitrader" target="_blank" rel="noopener" style="color:var(--lime);font-weight:600">查看源代码 ↗</a>',
     publicbar:'● <b>实时真实数据 · 只读演示</b> · 数据为链上真实筛选结果，<b>不构成投资建议</b> · 本页只展示、不可下单/改配置；想自己交易请 clone 源码本地运行（自配 API Key）',
     h1_suffix:'筛选 + 一键成交',
@@ -570,6 +690,9 @@ const I18N={
   },
   en:{
     title:'AI Trader - Auto-screen, One-Click Trade, Position Monitor',
+    tab_token:'Token Screen', tab_wallet:'Wallet Eval',
+    wlt_ph:'Paste a wallet address (current chain)… traders & dev wallets both supported', wlt_go:'Evaluate',
+    wlt_empty:'Enter a wallet address → style tags · track-record score · copy-tradeability · copy backtest · dev reputation',
     demobar:'⚠ <b>Demo Mode</b> · sample data, <b>not an official GMGN trading feature, not investment advice</b> · for real on-chain data, clone the source and run locally (your own API key; trades execute only on your machine) · <a href="https://github.com/GMGNAI/skillmarket-demos/blob/main/aitrader/README.en.md" target="_blank" rel="noopener" style="color:var(--lime);font-weight:600">View source ↗</a>',
     publicbar:'● <b>Live real data · read-only demo</b> · real on-chain screening results, <b>not investment advice</b> · view-only here—no orders, no config changes; to trade yourself, clone the source and run locally (your own API key)',
     h1_suffix:'Screen + One-Click Trade',
@@ -835,7 +958,7 @@ function devCard(r){
   const rugN=r.devRugged??'?', rugPct=(r.devRugRate==null)?'':` <em>(${Math.round(r.devRugRate*100)}%)</em>`;
   const inner=(r.devInner!=null&&r.devInner>launches)?`<span class="dcinner has-tip" data-tip="${t('dev_inner_tip')}">+${r.devInner}</span>`:'';
   // 安全扫描风险行（仅在最近发币里检出不安全时显示）
-  const sec=(r.devSecUnsafe>0)?`<div class="dcrisk">${t('dev_sec_warn',r.devSecUnsafe,r.devSecChecked,(r.devSecRisks||[]).join(' · '))}</div>`:'';
+  const sec=(r.devSecUnsafe>0)?`<div class="dcrisk">${t('dev_sec_warn',r.devSecUnsafe,r.devSecChecked,(r.devSecRisks||[]).map(riskLabel).join(' · '))}</div>`:'';
   return `<div class="devcard ${cls}">
     <div class="dctop"><span class="dcscore">${sc}<small>/100</small></span><span class="dclbl">${t('dev_rep_label')}</span><span class="dctrust">${trust}</span></div>
     <div class="dcstats">
@@ -1210,8 +1333,12 @@ function setSource(s){
   const mcp=document.getElementById('mcpPill');
   if(s==='backend'){mcp.textContent='LIVE';mcp.style.color='var(--lime)';
     if(beReady){bePolling=true;scanCycle();}              // 环境已有 key，直接轮询，不弹框
-    else{toast(t('toast_be_switched'),'ok');openCfg();}}
-  else{mcp.textContent='DEMO';mcp.style.color='var(--amber)';loadingScreen=false;T=freshSeed();POS=seedPositions();RISK={open:1,openMax:20,expo:0.2857,expoMax:1.0,loss:0,lossMax:0.5,consec:0,consecMax:3,killed:false};sel=-1;cycles=1;renderAll(false);feed.innerHTML='';logScreen();}
+    else{toast(t('toast_be_switched'),'ok');openCfg();}
+    resetWalletView();   // 切回真实后端：清掉 DEMO 假数据，避免误认成真实查询结果
+  }
+  else{mcp.textContent='DEMO';mcp.style.color='var(--amber)';loadingScreen=false;T=freshSeed();POS=seedPositions();RISK={open:1,openMax:20,expo:0.2857,expoMax:1.0,loss:0,lossMax:0.5,consec:0,consecMax:3,killed:false};sel=-1;cycles=1;renderAll(false);feed.innerHTML='';logScreen();
+    showWalletDemo();   // 切到 DEMO：钱包评估也给一份假地址+假结果，只演示布局
+  }
 }
 
 /* ── config modal ── */
@@ -1469,12 +1596,348 @@ function applyI18n(){
   const tf=document.getElementById('tokFilter');if(tf)tf.setAttribute('data-tip',t(onlyHeld?'tokf_on':'tokf_off'));
   applyLiveLabel();
   renderAll(false);
+  if(typeof wltData!=='undefined'&&wltData&&typeof renderWallet==='function')renderWallet();  // 已评估的钱包随语言重渲染
   if(source==='demo'){feed.innerHTML='';logScreen();}   // 重置日志为当前语言
 }
 function switchLang(){lang=(lang==='zh'?'en':'zh');localStorage.setItem('aitrader_lang',lang);applyI18n();}
 
+/* ══════════ 钱包评估 Tab ══════════ */
+let curView=sessionStorage.getItem('aitrader_view')||'token';
+let wltData=null, wltBusy=false;
+
+const WLK={
+  zh:{need_addr:'请输入钱包地址', loading:'查询中…', fail:'查询失败',
+    play:'打法', active:d=>`活跃 ${d} 天`, fans:'X',
+    s_pnl:'7D 盈亏', s_win:'胜率', s_hold:'均持仓', s_trades:'7D 笔数(买/卖)', s_avg:'均每笔',
+    s_early:'进场<$100k', s_flip:'5 秒内买卖',
+    dist:'盈亏分布', coins:'币',
+    trk:'真实战绩分', trk_sub:'是不是真有本事（按盈亏分布调整）',
+    cpy:'可跟单分', cpy_sub:'你跟进后实际能拿到多少',
+    trk_fac:'真实战绩 · 因子', cpy_fac:'可跟单 · 因子', dev_fac:'DEV 信誉 · 因子',
+    bt:'跟单回测', bt_formula:'跟单单笔 = 钱包单笔% − 延迟漂移 − 双边滑点 − gas（低市值币每秒漂移最狠）',
+    bt_lat:'跟单延迟', bt_slip:'单边滑点', bt_gas:'每笔 gas',
+    bt_net:'单笔净利', bt_wallet:'钱包', bt_copy:'跟单',
+    bt_w7:'钱包自己 7D', bt_c7:'跟单者实测 7D', bt_trap:'抄单陷阱敞口',
+    learn:'仅学习 📖',
+    dev:'Dev 信誉', dev_sub:'他发的币，底子干不干净', dev_none_t:'该地址未发过 token',
+    dev_none_s:'非发币方钱包 —— 自己发的币未超过交易币数的一半，按纯交易者评估，无 Dev 信誉分。',
+    dev_surv:'存活率', dev_rug:'rug 率',
+    dev_reskin:'换皮重发', dev_sec:'安全风险',
+    dev_migrate:'迁移率', dev_migrate_detail:(total,inner)=>`历史发币 ${total} 个，内盘沉底 ${inner} 个——迁移率越低，越像批量发币不管死活`,
+    dev_survrug_note:'取样自最近发的币：还有流动性(存活) vs 已被抽干/沉底(rug)',
+    dev_reskin_note:'自己发的币里，反复用同一张 logo 发新盘——真项目方不会这么干，多是换个名字重新割一轮',
+    self_deal_note:'⚠ 自产自销，两项分数已大幅打折',
+    yes:'检出 ⚠', no:'未检出 ✓', none:'无',
+    u_sec:' 秒', u_min:' 分', u_hr:' 小时', u_day:' 天',
+    off:'钱包评估需要本地后端在运行（127.0.0.1:8000）。'},
+  en:{need_addr:'Enter a wallet address', loading:'Querying…', fail:'Query failed',
+    play:'Style', active:d=>`${d}d active`, fans:'X',
+    s_pnl:'7D PnL', s_win:'Win rate', s_hold:'Avg hold', s_trades:'7D trades(b/s)', s_avg:'Avg/trade',
+    s_early:'Entry<$100k', s_flip:'Flip <5s',
+    dist:'PnL dist', coins:'coins',
+    trk:'Track-record', trk_sub:'Is he actually skilled (distribution-adjusted)',
+    cpy:'Copy-tradeable', cpy_sub:'How much YOU could actually capture',
+    trk_fac:'Track · factors', cpy_fac:'Copy · factors', dev_fac:'Dev · factors',
+    bt:'Copy-trade backtest', bt_formula:'copy/trade = wallet% − latency drift − 2× slippage − gas (low-mcap drifts fastest)',
+    bt_lat:'Follow latency', bt_slip:'Slippage (1-side)', bt_gas:'Gas/trade',
+    bt_net:'Per-trade net', bt_wallet:'Wallet', bt_copy:'Copier',
+    bt_w7:'Wallet 7D', bt_c7:'Copier actual 7D', bt_trap:'Copy-trap exposure',
+    learn:'Learn only 📖',
+    dev:'Dev reputation', dev_sub:'Are the tokens he launches actually legit', dev_none_t:'This address has never launched a token',
+    dev_none_s:'Not a token-creator wallet — its own launches are under half of its traded tokens, so it is scored as a pure trader with no dev-reputation score.',
+    dev_surv:'Survival', dev_rug:'Rug rate',
+    dev_reskin:'Logo reuse', dev_sec:'Security risk',
+    dev_migrate:'Migration rate', dev_migrate_detail:(total,inner)=>`${total} tokens launched, ${inner} stuck in the inner pool — the lower this is, the more it looks like mass-produced, don't-care-if-they-die tokens`,
+    dev_survrug_note:'Sampled from recent launches: still has liquidity (survival) vs. already drained/rugged',
+    dev_reskin_note:'Reuses the same logo across its own launches — real projects don’t do this; usually a rename-and-rerun of the same rug',
+    self_deal_note:'⚠ Self-dealer — both scores heavily discounted',
+    yes:'found ⚠', no:'none ✓', none:'none',
+    u_sec:'s', u_min:'m', u_hr:'h', u_day:'d',
+    off:'Wallet eval needs the local backend running (127.0.0.1:8000).'}
+};
+/* DEMO 模式下没有本地后端可查（GitHub Pages 纯静态托管同理），钱包评估给一份写死的示例结果，
+   只为展示页面布局长什么样，地址是假的，数字也不代表任何真实钱包。选了一个「发币方+自产自销」的
+   例子，因为它能一次性把 Dev 信誉卡、自产自销折算提示、多标签这些状态都覆盖到，比一个干净的
+   普通交易者更能展示全部 UI 状态。 */
+const DEMO_WALLET_ADDR='Demo1111111111111111111111111111111111';
+const DEMO_WALLET_DATA={
+  "chain":"sol","address":"Demo1111111111111111111111111111111111","live":false,
+  "stats":{"address":"Demo1111111111111111111111111111111111","native_balance":10.826379691,
+    "realized_profit":12249.260902511425,"roi":0.3098420685197098,"buy":192,"sell":303,"trades":495,
+    "bought_cost":38473.06658283518,"sold_income":51654.47519393671,"avg_buy_usd":200.38055511893322,
+    "avg_trade_usd":40.42660363865157,"token_num":179,"winrate":0.8693181818181818,
+    "dist":{"gt_5":0,"x2_5":2,"x0_2":154,"n50_0":23,"lt_n50":0},"avg_hold_s":18152.254237288136,
+    "name":"","tags":["axiom"],"created_at":1779833688.0,"twitter_fans":0,"is_verified":false,
+    "created_token_count":510},
+  "activity":{"sampled":60,"entry_under_100k":1.0,"median_entry_mcap":4201.45,"fast_flip_rate":0.8462,"avg_gas_usd":0.1106},
+  "tags":[
+    {"emoji":"🏭","name":"发币方 / Dev","desc":"发过 510 个币（占交易 100%+），rug 率 98%（工厂号嫌疑）",
+      "name_en":"Token creator / Dev","desc_en":"Launched 510 tokens (≥100% of its traded tokens), rug rate 98% (factory suspect)"},
+    {"emoji":"🏗️","name":"自产自销","desc":"交易的币里 100%+ 是自己发的——进场时机/胜率对自己发的币没意义，别看这类标签",
+      "name_en":"Self-dealer","desc_en":"≥100% of its traded tokens are its own launches — entry timing/win-rate mean nothing on its own tokens, ignore those tags"},
+    {"emoji":"⚡","name":"闪电手","desc":"85% 的仓位 5 秒内买卖，抢的是速度不是判断",
+      "name_en":"Flash flipper","desc_en":"85% of positions bought & sold within 5s — racing on speed, not judgment"}],
+  "track":{"score":41,"factors":[
+    {"key":"tail","name":"止损纪律","name_en":"Stop-loss discipline","score":100,"weight":0.34},
+    {"key":"upside","name":"盈利面","name_en":"Profit share","score":87,"weight":0.28},
+    {"key":"roi","name":"资金回报","name_en":"Capital ROI","score":100,"weight":0.16},
+    {"key":"win","name":"胜率","name_en":"Win rate","score":100,"weight":0.1},
+    {"key":"size","name":"样本量","name_en":"Sample size","score":53,"weight":0.12}],"self_dealing":true},
+  "copy":{"score":13,"factors":[
+    {"key":"entry","name":"进场市值","name_en":"Entry mcap","score":12,"note":"100% <$100k，太早只能接盘","note_en":"100% <$100k, too early — you'd be the exit liquidity","weight":0.22},
+    {"key":"profit","name":"单笔利润空间","name_en":"Profit per trade","score":51,"note":"均每笔 $40.43","note_en":"avg $40.43/trade","weight":0.22},
+    {"key":"hold","name":"持仓 vs 延迟","name_en":"Hold vs latency","score":0,"note":"均持 5.0 小时，85% 是 5 秒内","note_en":"avg hold 5.0h, 85% within 5s","weight":0.2},
+    {"key":"feasible","name":"执行可行性","name_en":"Execution feasibility","score":80,"note":"7天 495 笔","note_en":"495 trades/7D","weight":0.18},
+    {"key":"edge","name":"优势类型","name_en":"Edge type","score":0,"note":"靠速度/规模化薄利 = 身份","note_en":"Speed/scale on thin margins = his identity","weight":0.18}],"self_dealing":true},
+  "backtest":{"latency_s":3.0,"slippage_pct":0.05,"gas_usd":0.2,"wallet_pct":0.3184,"copy_pct":0.1724,
+    "drift":0.045,"slip":0.1,"gas_pct":0.001,"wallet_7d":12249.3,"copy_7d":6632.3,"trap":5617.0},
+  "dev":{"inner_count":506,"launches":4,"survival_rate":0.008,"ath_mc":183459.72,"analyzed":100,
+    "alive":2,"rugged":98,"rug_rate":0.98,"own_img_reuse":10,"sec_checked":3,"sec_unsafe":0,
+    "sec_risks":[],"sec_risk_rate":0.0,"score":0.0},
+  "verdict":{"tone":"bad","text":"发币方钱包，Dev 信誉仅 0/100（连环 rug / 换皮嫌疑）—— 别碰它发的新盘。",
+    "text_en":"Token-creator wallet, Dev reputation only 0/100 (serial-rug / reskin suspect) — stay away from its new launches."}
+};
+function showWalletDemo(){
+  const a=document.getElementById('wltAddr');if(a)a.value=DEMO_WALLET_ADDR;
+  wltData=DEMO_WALLET_DATA;renderWallet();
+}
+function resetWalletView(){
+  wltData=null;
+  const a=document.getElementById('wltAddr');if(a)a.value='';
+  const res=document.getElementById('wltResult');if(res)res.innerHTML='<div class="wlt-empty">'+t('wlt_empty')+'</div>';
+}
+function switchView(v){
+  curView=v; sessionStorage.setItem('aitrader_view',v);
+  document.getElementById('tabToken').classList.toggle('on',v==='token');
+  document.getElementById('tabWallet').classList.toggle('on',v==='wallet');
+  document.getElementById('viewToken').style.display=v==='token'?'flex':'none';
+  document.getElementById('viewWallet').style.display=v==='wallet'?'block':'none';
+  if(v==='wallet'){const a=document.getElementById('wltAddr');if(a)a.focus();}
+}
+
+async function runWallet(){
+  const addr=(document.getElementById('wltAddr').value||'').trim();
+  const res=document.getElementById('wltResult');
+  if(!addr){toast(WLK[lang].need_addr,'err');return;}
+  if(wltBusy)return;wltBusy=true;
+  const go=document.getElementById('wltGo');go.disabled=true;
+  res.innerHTML='<div class="wlt-empty"><span class="spin"></span>'+WLK[lang].loading+'</div>';
+  try{
+    const body={chain:curChain,address:addr,latency_s:3,slippage_pct:0.05,gas_usd:0.2};
+    const r=await fetch(API+'/api/wallet',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){let e={};try{e=await r.json();}catch(_){}
+      throw new Error(e.detail||('HTTP '+r.status));}
+    wltData=await r.json();renderWallet();
+  }catch(e){
+    const msg=(e.message&&e.message.indexOf('Failed to fetch')>=0)?WLK[lang].off:(WLK[lang].fail+'：'+e.message);
+    res.innerHTML='<div class="wlt-err">'+msg+'</div>';wltData=null;
+  }finally{wltBusy=false;go.disabled=false;}
+}
+
+/* 格式化 */
+function fmtUsd(v){v=+v||0;const s=v>=0?'+':'−';const a=Math.abs(v);let n;
+  if(a>=1e6)n='$'+(a/1e6).toFixed(2)+'M';else if(a>=1e3)n='$'+(a/1e3).toFixed(1)+'K';else n='$'+a.toFixed(0);return s+n;}
+function fmtK(v){v=+v||0;if(v>=1e6)return (v/1e6).toFixed(1)+'M';if(v>=1e3)return (v/1e3).toFixed(2)+'K';return ''+v;}
+function pctS(v){return (v>=0?'+':'')+(v*100).toFixed(1)+'%';}
+function fmtDur(s){s=+s||0;const W=WLK[lang];
+  if(s<60)return Math.round(s)+W.u_sec;if(s<3600)return Math.round(s/60)+W.u_min;
+  if(s<86400)return (s/3600).toFixed(1)+W.u_hr;return (s/86400).toFixed(1)+W.u_day;}
+function scoreCol(s){return s>=60?'var(--lime)':s>=40?'var(--amber)':'var(--clay)';}
+function esc(x){return String(x==null?'':x).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
+// 后端 _security_unsafe() 只返回固定的几个中文短语（不是自然语言句子），用一张小表直接映射成英文，
+// 不用改后端接口结构。选币侧 devSecRisks 和钱包侧 sec_risks 是同一份数据，两边共用这张表。
+const RISK_LABEL_EN={'蜜罐':'Honeypot','可增发':'Mintable','未弃冻结权':'Freeze not renounced',
+  '貔貅·卖不出':'Honeypot (can\'t sell)','未开源':'Not verified'};
+function riskLabel(s){return lang==='en'?(RISK_LABEL_EN[s]||s):s;}
+
+let facMode='copy';
+function setFac(m){facMode=m;const box=document.getElementById('wfBox');if(box&&wltData)box.innerHTML=facRows();
+  document.getElementById('facTrk').classList.toggle('on',m==='track');
+  document.getElementById('facCpy').classList.toggle('on',m==='copy');
+  const fd=document.getElementById('facDev');if(fd)fd.classList.toggle('on',m==='dev');}
+function facRows(){
+  if(facMode==='dev')return devFacRows();
+  const src=facMode==='track'?wltData.track:wltData.copy;
+  // 自产自销提示只在分数卡片那边统一露出一次（见 renderWallet），这里不重复
+  return src.factors.map(f=>{const c=scoreCol(f.score);
+    const nm=(lang==='en'&&f.name_en)?f.name_en:f.name, nt=(lang==='en'&&f.note_en)?f.note_en:f.note;
+    return `<div class="wf-row"><div class="wf-head"><b>${esc(nm)}</b><span class="sc" style="color:${c}">${f.score}</span></div>
+      <div class="wf-bar"><i style="width:${Math.max(3,f.score)}%;background:${c}"></i></div>
+      ${nt?`<div class="wf-note">${esc(nt)}</div>`:''}</div>`;}).join('');
+}
+function devFacRows(){
+  // 排版顺序按「有多少真正起飞(迁移率，含规模明细) → 起飞的还活着吗(存活/rug) → 可疑行为模式」的
+  // 阅读逻辑走。迁移率=launches/(launches+inner_count)=launches/历史发币，跟「历史发币」「内盘沉底」
+  // 是同一份数据的三个角度（历史发币=launches+inner_count），所以合并成一行：迁移率做主数值+进度条，
+  // 历史发币/内盘沉底的原始计数放进这行的小字说明里，不再各占一行。
+  // 后端字段名叫 survival_rate 但语义其实是「毕业率」，跟下面「存活率」是两回事——存活率/rug率是对
+  // 最近取样(≤100条)里已经沉底/rug 的比例，两者容易被误当同一个指标，拆开单独展示。
+  const W=WLK[lang],dv=wltData.dev;
+  if(!dv)return `<div class="wf-row"><div class="wf-note">${esc(W.dev_none_s)}</div></div>`;
+  const st=wltData.stats;
+  const total=st.created_token_count||dv.launches||dv.analyzed||0;
+  const inner=dv.inner_count||0;
+  const migrate=Math.round((dv.survival_rate||0)*100);
+  const surv=Math.round((dv.rug_rate!=null?(1-dv.rug_rate):0)*100);
+  const rug=Math.round((dv.rug_rate||0)*100);
+  const reskin=(dv.own_img_reuse||0)>=2,risks=(dv.sec_risks||[]);
+  const row=(name,val,col,pct,note)=>`<div class="wf-row"><div class="wf-head"><b>${esc(name)}</b><span class="sc" style="color:${col}">${val}</span></div>
+    ${pct!=null?`<div class="wf-bar"><i style="width:${Math.max(3,pct)}%;background:${col}"></i></div>`:''}
+    ${note?`<div class="wf-note">${esc(note)}</div>`:''}</div>`;
+  const survRugRow=`<div class="wf-row"><div class="wf-head"><b>${esc(W.dev_surv)} / ${esc(W.dev_rug)}</b>
+    <span class="sc"><span style="color:var(--lime)">${surv}%</span> / <span style="color:var(--clay)">${rug}%</span></span></div>
+    <div class="wh-distbar"><span style="width:${Math.max(surv,0)}%;background:var(--lime)"></span><span style="width:${Math.max(rug,0)}%;background:var(--clay)"></span></div>
+    <div class="wf-note">${esc(W.dev_survrug_note)}</div></div>`;
+  return [
+    row(W.dev_migrate,migrate+'%',migrate>=30?'var(--lime)':migrate>=5?'var(--amber)':'var(--clay)',migrate,W.dev_migrate_detail(total,inner)),
+    survRugRow,
+    row(W.dev_reskin,reskin?W.yes:W.no,reskin?'var(--clay)':'var(--lime)',null,W.dev_reskin_note),
+    row(W.dev_sec,risks.length?esc(risks.map(riskLabel).join('·')):W.none,risks.length?'var(--clay)':'var(--lime)',null),
+  ].join('');
+}
+
+/* 跟单回测：客户端镜像后端公式，滑块即时重算 */
+function btCompute(lat,slip,gas){
+  const st=wltData.stats,ac=wltData.activity;
+  let wpct=st.bought_cost>0?st.realized_profit/st.bought_cost:st.roi;wpct=wpct||0.0001;
+  wpct=Math.max(-0.9,Math.min(3.0,wpct));   // 与后端一致：dev 钱包 bought_cost 极小→钳制，避免爆表
+  const dps=0.015*(0.3+0.7*ac.entry_under_100k);
+  const drift=lat*dps,slp=2*slip,gpct=st.avg_buy_usd>0?gas/st.avg_buy_usd:0;
+  const cpct=wpct-drift-slp-gpct,w7=st.realized_profit,c7=wpct?w7*(cpct/wpct):0;
+  return {wpct,cpct,w7,c7,trap:w7-c7};
+}
+function btUpdate(){
+  const lat=+document.getElementById('btLat').value, slip=+document.getElementById('btSlip').value/100, gas=+document.getElementById('btGas').value;
+  document.getElementById('btLatV').textContent=lat+WLK[lang].u_sec;
+  document.getElementById('btSlipV').textContent=(slip*100).toFixed(0)+' %';
+  document.getElementById('btGasV').textContent=gas.toFixed(2)+' $';
+  document.getElementById('btRes').innerHTML=btResHtml(btCompute(lat,slip,gas));
+}
+function btResHtml(b){
+  const W=WLK[lang];const mx=Math.max(Math.abs(b.w7),Math.abs(b.c7),1);
+  const bar=(v)=>{const pos=v>=0;const col=pos?'var(--lime)':'var(--clay)';
+    return `<div class="wbt-barrow"><div class="wbt-mbar"><i style="width:${Math.max(4,Math.abs(v)/mx*100)}%;background:${col}"></i></div><em style="color:${col}">${fmtUsd(v)}</em></div>`;};
+  return `<div class="wbt-net">${W.bt_net}　${W.bt_wallet} <b style="color:var(--lime)">${pctS(b.wpct)}</b>　${W.bt_copy} <b style="color:${b.cpct>=0?'var(--lime)':'var(--clay)'}">${pctS(b.cpct)}</b></div>
+    <div class="wbt-cmp"><div class="lbl">${W.bt_w7}</div>${bar(b.w7)}</div>
+    <div class="wbt-cmp"><div class="lbl">${W.bt_c7}</div>${bar(b.c7)}</div>
+    <div class="wbt-trap"><span class="k">${W.bt_trap}</span><span class="v">${fmtUsd(b.trap)}</span></div>`;
+}
+
+function renderWallet(){
+  const d=wltData,W=WLK[lang],st=d.stats,ac=d.activity;
+  const nm=st.name||(d.address.slice(0,6)+'…'+d.address.slice(-4));
+  const days=st.created_at>0?Math.round((Date.now()/1000-st.created_at)/86400):0;
+  const dist=st.dist,tn=Math.max(1,st.token_num);
+  const segs=[['gt_5','#c8f24a'],['x2_5','#a6cf3f'],['x0_2','#7e992a'],['n50_0','#6b5f3a'],['lt_n50','#ec5a40']];
+  const distBar=segs.map(([k,c])=>`<span style="width:${dist[k]/tn*100}%;background:${c}"></span>`).join('');
+  const tagName=t=>(lang==='en'&&t.name_en)?t.name_en:t.name, tagDesc=t=>(lang==='en'&&t.desc_en)?t.desc_en:t.desc;
+  const play=d.tags.slice(0,2).map(t=>esc(tagName(t))).join(' · ')||'—';
+  const ts=d.track.score,cs=d.copy.score;
+  const bt=d.backtest;
+  const stat=(k,v,col)=>`<div class="wh-stat"><div class="k">${k}</div><div class="v"${col?` style="color:${col}"`:''}>${v}</div></div>`;
+
+  // Dev 信誉块（第三个维度）：这里只放 分数+一句话，样式对齐真实战绩分/可跟单分；
+  // 存活率/rug率/历史发币/内盘沉底/换皮重发/安全风险 挪到下面「DEV 信誉·因子」tab（见 devFacRows）。
+  // base 链 gmgn-cli 的 created_token_count 回填不全（已验证：确认发过币的钱包仍读到 0），
+  // 门槛判断会漏判发币方，暂时整块不展示，避免误导用户「这个地址没发过币」。
+  let devHtml='';
+  if(d.chain==='base'){
+    // 不渲染；facMode 若停在 'dev' 也退回 copy，避免 base 下 toggle 按钮消失但内容仍是 dev 空态
+    if(facMode==='dev')facMode='copy';
+  }else if(d.dev){const dv=d.dev,ds=Math.round((dv.score||0)*100);
+    devHtml=`
+    <div class="wlt-card">
+      <div class="ws-lbl">${W.dev}</div>
+      <div class="ws-num" style="color:${scoreCol(ds)}">${ds}<i>/100</i></div>
+      <div class="ws-track"><i style="width:${ds}%;background:${scoreCol(ds)}"></i></div>
+      <div class="ws-sub">${W.dev_sub}</div>
+    </div>`;
+  }else{
+    devHtml=`
+    <div class="wlt-card">
+      <div class="ws-lbl">${W.dev}</div>
+      <div class="ws-num" style="color:var(--dim)">—</div>
+      <div class="ws-sub">${W.dev_none_t}</div>
+    </div>`;
+  }
+
+  let html=`
+  <div class="wlt-card">
+    <div class="wh-top">
+      <div>
+        <div class="wh-id"><span class="wh-name">${esc(nm)}</span><span class="wh-chain">${(d.chain||'').toUpperCase()}</span>
+          <span class="wh-meta">${d.address.slice(0,6)}…${d.address.slice(-4)} · ${W.active(days)}${st.twitter_fans>0?` · ${W.fans} ${fmtK(st.twitter_fans)}`:''}${st.is_verified?' ✔':''}</span></div>
+        <div class="wh-meta" style="margin-top:9px">${W.play}：<b style="color:var(--paper2)">${play}</b></div>
+      </div>
+      <div class="wh-pnl" style="color:${st.realized_profit>=0?'var(--lime)':'var(--clay)'}">${fmtUsd(st.realized_profit)}<span class="roi">ROI ${pctS(st.roi)}</span></div>
+    </div>
+    <div class="wh-tags">${d.tags.map(t=>`<span class="wh-tag"><span class="em">${t.emoji}</span><b>${esc(tagName(t))}</b><i>${esc(tagDesc(t))}</i></span>`).join('')}</div>
+    <div class="wh-stats">
+      ${stat(W.s_pnl,fmtUsd(st.realized_profit),st.realized_profit>=0?'var(--lime)':'var(--clay)')}
+      ${stat(W.s_win,(st.winrate*100).toFixed(2)+'%')}
+      ${stat(W.s_hold,fmtDur(st.avg_hold_s))}
+      ${stat(W.s_trades,st.buy+'/'+st.sell)}
+      ${stat(W.s_avg,fmtUsd(st.avg_trade_usd))}
+      ${stat(W.s_early,(ac.entry_under_100k*100).toFixed(1)+'%',ac.entry_under_100k>0.7?'var(--amber)':'')}
+      ${stat(W.s_flip,(ac.fast_flip_rate*100).toFixed(1)+'%',ac.fast_flip_rate>0.3?'var(--amber)':'')}
+    </div>
+    <div class="wh-dist">
+      <div class="wh-distbar">${distBar}</div>
+      <div class="wh-distleg">${W.dist} <b>${st.token_num} ${W.coins}</b>：>500% ${dist.gt_5} · 200–500% ${dist.x2_5} · 0–200% ${dist.x0_2} · −50–0% ${dist.n50_0} · <−50% ${dist.lt_n50}</div>
+    </div>
+  </div>
+
+  <div class="wlt-scores-block">
+    <div class="wlt-scores"${d.chain==='base'?' style="grid-template-columns:1fr 1fr"':''}>
+      <div class="wlt-card">
+        <div class="ws-lbl">${W.trk}</div>
+        <div class="ws-num" style="color:${scoreCol(ts)}">${ts}<i>/100</i></div>
+        <div class="ws-track"><i style="width:${ts}%;background:${scoreCol(ts)}"></i></div>
+        <div class="ws-sub">${W.trk_sub}</div>
+      </div>
+      <div class="wlt-card">
+        <div class="ws-lbl">${W.cpy}</div>
+        <div class="ws-num" style="color:${scoreCol(cs)}">${cs}<i>/100</i></div>
+        <div class="ws-track"><i style="width:${cs}%;background:${scoreCol(cs)}"></i></div>
+        <div class="ws-sub">${W.cpy_sub}</div>
+      </div>
+      ${devHtml}
+    </div>
+    ${(d.track.self_dealing||d.copy.self_dealing)?`<div class="wlt-selfdeal">${W.self_deal_note}</div>`:''}
+  </div>
+
+  <div class="wlt-card">
+    <div class="ws-toggle">
+      <button id="facTrk" class="trk${facMode==='track'?' on':''}" onclick="setFac('track')">${W.trk_fac}</button>
+      <button id="facCpy" class="cpy${facMode==='copy'?' on':''}" onclick="setFac('copy')">${W.cpy_fac}</button>
+      ${d.chain==='base'?'':`<button id="facDev" class="dev${facMode==='dev'?' on':''}" onclick="setFac('dev')">${W.dev_fac}</button>`}
+    </div>
+    <div id="wfBox">${facRows()}</div>
+  </div>
+
+  <div class="wlt-card">
+    <h4>${W.bt}</h4>
+    <div class="wbt-formula">${W.bt_formula}</div>
+    <div class="wbt">
+      <div class="wbt-form">
+        <div class="wbt-sl"><label>${W.bt_lat} <b id="btLatV">${bt.latency_s}${W.u_sec}</b></label><input type="range" id="btLat" min="0" max="10" step="1" value="${bt.latency_s}" oninput="btUpdate()"></div>
+        <div class="wbt-sl"><label>${W.bt_slip} <b id="btSlipV">${(bt.slippage_pct*100).toFixed(0)} %</b></label><input type="range" id="btSlip" min="0" max="15" step="1" value="${bt.slippage_pct*100}" oninput="btUpdate()"></div>
+        <div class="wbt-sl"><label>${W.bt_gas} <b id="btGasV">${bt.gas_usd.toFixed(2)} $</b></label><input type="range" id="btGas" min="0" max="2" step="0.05" value="${bt.gas_usd}" oninput="btUpdate()"></div>
+      </div>
+      <div class="wbt-res" id="btRes">${btResHtml({wpct:bt.wallet_pct,cpct:bt.copy_pct,w7:bt.wallet_7d,c7:bt.copy_7d,trap:bt.trap})}</div>
+    </div>
+  </div>`;
+
+  const v=d.verdict||{tone:'ok',text:''};
+  const vText=(lang==='en'&&v.text_en)?v.text_en:v.text;
+  html+=`<div class="wlt-verdict ${v.tone}"><span>${esc(vText)}</span><span class="badge">${W.learn}</span></div>`;
+
+  document.getElementById('wltResult').innerHTML=html;
+}
+
 /* ── init ── */
 applyI18n();tick();
+switchView(curView);
 setInterval(tick,1000);
 pollTimer=setInterval(scanCycle,pollMs);
 setInterval(telemetry,2600);
