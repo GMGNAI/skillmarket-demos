@@ -102,14 +102,18 @@ CFG = {
 }
 # 各链「原生/币种」token 地址（买入时作 input、卖出时作 output）。
 # 地址来自 gmgn-cli 权威 Chain Currencies 表，绝不能凭记忆改（错一个字符会静默失败）。
+# robinhood：gmgn-cli 1.5.1 新增支持，但其 README 的 Chain Currencies 表没列出该链币种——
+# 已用 `gmgn-cli token info --chain robinhood --address 0x000...000 --raw` 实测确认
+# （返回 symbol=ETH, decimals=18），与 base/eth 同款 EVM 原生币空地址约定一致，非凭记忆填写。
 NATIVE_TOKEN = {
-    "sol":  "So11111111111111111111111111111111111111112",
-    "bsc":  "0x0000000000000000000000000000000000000000",   # BNB native
-    "base": "0x0000000000000000000000000000000000000000",   # ETH native
-    "eth":  "0x0000000000000000000000000000000000000000",   # ETH native
+    "sol":       "So11111111111111111111111111111111111111112",
+    "bsc":       "0x0000000000000000000000000000000000000000",   # BNB native
+    "base":      "0x0000000000000000000000000000000000000000",   # ETH native
+    "eth":       "0x0000000000000000000000000000000000000000",   # ETH native
+    "robinhood": "0x0000000000000000000000000000000000000000",   # ETH native（实测确认，见上）
 }
 # 原生币最小单位精度：SOL=9(lamports)，EVM 原生币=18(wei)。买入金额 = size * 10**decimals。
-NATIVE_DECIMALS = {"sol": 9, "bsc": 18, "base": 18, "eth": 18}
+NATIVE_DECIMALS = {"sol": 9, "bsc": 18, "base": 18, "eth": 18, "robinhood": 18}
 def native_token(chain): return NATIVE_TOKEN.get(chain, NATIVE_TOKEN["sol"])
 def native_decimals(chain): return NATIVE_DECIMALS.get(chain, 9)
 
@@ -1283,7 +1287,7 @@ class RiskManager:
             return False, "BLOCK 超出总敞口上限"
         return True, "ok"
 
-SUPPORTED_CHAINS = ("sol", "bsc", "base", "eth")
+SUPPORTED_CHAINS = ("sol", "bsc", "base", "eth", "robinhood")
 
 class AppState:
     """链改为「请求维度」：不再有全局当前链，按链缓存 adapter + trending 结果。
@@ -1914,16 +1918,30 @@ def api_wallet(w: WalletIn):
     # 满足才查 dev 信誉（省一次 cli），并据此打「发币方 / Dev」标签 + 展示 Dev 信誉卡。
     ctc, tnum = stats["created_token_count"], max(1, stats["token_num"])
     dev = wallet_dev_profile(g, ch, addr) if (ctc > 0 and ctc > 0.5 * tnum) else None
-    tags = wallet_tags(stats, summ, dev)
-    track = track_record_score(stats)
-    copy = copytrade_score(stats, summ)
-    if dev is not None:
-        track = _discount_self_dealing(track)
-        copy = _discount_self_dealing(copy)
-    bt = copytrade_backtest(stats, summ, w.latency_s, w.slippage_pct, w.gas_usd)
-    verdict = wallet_verdict(stats, track, copy, dev)
+    # GMGN portfolio stats 偶尔会在 trades=0（buy=sell=0，从没真实买卖过）的情况下，仍然返回非零
+    # token_num/dist（疑似把转入/空投持有的代币也计进去了）——这类"幽灵持仓"如果照常喂进打分公式，
+    # tail/upside 等因子会把"完全没有数据"误判成"从不亏钱"，算出一个看似正常但毫无依据的高分。
+    # 无真实交易记录时直接跳过打分/回测，明确告知用户，而不是硬凑一个数字。
+    no_trades = stats["trades"] == 0
+    if no_trades:
+        tags = [dict(emoji="❔", name="无交易记录", desc="链上没有真实买卖记录——可能是新钱包，或持有的代币是转入/空投所得，从未交易过，无法评估战绩。",
+                     name_en="No trading history", desc_en="No real buy/sell activity on-chain — this may be a new wallet, or any tokens it holds were transferred/airdropped in rather than traded, so there isn't enough data to score.")]
+        track = dict(score=0, factors=[])
+        copy = dict(score=0, factors=[])
+        bt = None
+        verdict = dict(tone="warn", text="该地址暂无真实交易记录，无法评估真实战绩分 / 可跟单分 / 跟单回测。",
+                        text_en="This address has no real trading history yet, so track-record, copy-tradeability, and the backtest can't be scored.")
+    else:
+        tags = wallet_tags(stats, summ, dev)
+        track = track_record_score(stats)
+        copy = copytrade_score(stats, summ)
+        if dev is not None:
+            track = _discount_self_dealing(track)
+            copy = _discount_self_dealing(copy)
+        bt = copytrade_backtest(stats, summ, w.latency_s, w.slippage_pct, w.gas_usd)
+        verdict = wallet_verdict(stats, track, copy, dev)
     return JSONResponse(dict(
-        chain=ch, address=addr, live=ST.is_live_adapter,
+        chain=ch, address=addr, live=ST.is_live_adapter, no_trades=no_trades,
         stats=stats, activity=summ, tags=tags,
         track=track, copy=copy, backtest=bt, dev=dev, verdict=verdict))
 
