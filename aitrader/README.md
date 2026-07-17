@@ -15,7 +15,7 @@
 - **持仓逃生监控**：建仓落安全快照，每轮 diff 复检（蜜罐/弃权/前 10 集中度），劣化到阈值弹「立即平仓」。与选币/风控严格分离，LLM 永远碰不到逃生路径。
 - **一键买入 / 平仓（人在环）**：通过全部闸门的候选摆成「待你决策」，只有你点按钮才成交；买入轮询确认真实成交，失败不记仓、不谎报，成交带 tx hash。
 - **实盘 / 模拟盘**：SHADOW（模拟盘，默认安全态，只落日志）↔ LIVE（实盘，真实资金、不可逆）一键切换 + 二次确认；`app.py` 顶部 `LIVE_TRADING_DISABLED` 总开关可一键封死所有链上写。
-- **多链**：SOL / BSC / Base / ETH 请求维度切换，按链缓存 adapter + 短缓存热榜、按链记忆命令与买入单位；多 tab 各持各链互不干扰。
+- **多链**：SOL / BSC / Base / ETH / Robinhood 请求维度切换，按链缓存 adapter + 短缓存热榜、按链记忆命令与买入单位；多 tab 各持各链互不干扰。
 - **持久化 / 隔离**：持仓落盘（`positions.json`，重启不丢）+ 按链隔离；决策全程写 `trade_decisions.jsonl`（SCREEN/FILTER/BUY/SELL/UNMONITOR）。
 - **免 key 可跑**：内置 `MockGMGN` 适配器合成同构数据，不装 gmgn-cli、不填 key 也能完整联调演示；配了 key 启动即自动切真实行情。
 - **GitHub Pages 演示模式**：非 localhost 且连不上后端时前端自动进 DEMO 模式（示例数据 + 演示横幅，零接口、零 key、不能下单）。
@@ -40,9 +40,9 @@ aitrader/
 
 ## 准备（一次性）
 1. Python 3.10+
-2. 仅 LIVE / 真实行情需要：装 `gmgn-cli`（实测对齐 **1.3.9**，1.0.x 接口已不兼容）
+2. 仅 LIVE / 真实行情需要：装 `gmgn-cli`（实测对齐 **1.5.2**，1.0.x 接口已不兼容；robinhood 链需 ≥1.5.1）
    ```bash
-   npm install -g gmgn-cli@1.3.9
+   npm install -g gmgn-cli@1.5.2
    ```
 3. 仅 LIVE / 真实行情需要：去 gmgn.ai/ai 用自己的 Ed25519 公钥 + 出口 IP 申请 API Key
    （key 绑定申请时的 IP 白名单，每个使用者用自己的，不能共用）
@@ -70,7 +70,7 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 ## 使用
 - 默认 Mock 适配器 + SHADOW 模式，**不填 key 也能跑**（联调用）。
 - 配了 key 则自动连真实行情；右上齿轮可改每条链的热榜命令 / 轮询间隔。
-- 右上 CHAIN 下拉切换 **SOL / BSC / Base / ETH**（每个 tab 用 sessionStorage 各自持链，多 tab 互不干扰）；右上 **MODE 图标点击切实盘/模拟盘**。
+- 右上 CHAIN 下拉切换 **SOL / BSC / Base / ETH / Robinhood**（每个 tab 用 sessionStorage 各自持链，多 tab 互不干扰）；右上 **MODE 图标点击切实盘/模拟盘**。
 - 通过全部闸门的候选会摆成「待你决策」，点「一键买入」才成交。
 - 持仓出现在右侧逃生监控，劣化到阈值（severity≥70）会弹「立即平仓」。
 
@@ -100,7 +100,8 @@ uvicorn app:app --host 127.0.0.1 --port 8000
 
 **⚠ EVM 链筛选疑似有问题 —— 目前只有 Solana 完整跑通**
 - **Solana**：筛选 / 买 / 卖 / 持仓监控全链路已验证（含 `order quote` 实测签名）。
-- **EVM（BSC / Base / ETH）**：链路已接（adapter / 原生币 `0x0` / 18 位精度 / 钱包解析 / bsc 默认 fourmeme 平台命令均按权威表对齐），但**筛选结果疑似不对/不全、未完整验证，买卖也未实盘逐链验证**。疑点：EVM `market trending` 行字段是否与 `FeatureExtractor.build_from_row` / `hard_gates` 的 Solana 假设一致（`is_honeypot`/`renounced_mint`/`bundler_rate`/`buys/sells` 等可能命名不同或缺失 → 避雷门/动能打分跑偏）；base/eth 是否需按链配 launchpad 平台。**EVM 当前建议只作只读浏览，实盘前先查清 + 小额逐链验证。**
+- **EVM（BSC / Base / ETH / Robinhood）**：链路已接（adapter / 原生币 `0x0` / 18 位精度 / 钱包解析 / bsc 默认 fourmeme 平台命令均按权威表对齐），但**筛选结果疑似不对/不全、未完整验证，买卖也未实盘逐链验证**。疑点：EVM `market trending` 行字段是否与 `FeatureExtractor.build_from_row` / `hard_gates` 的 Solana 假设一致（`is_honeypot`/`renounced_mint`/`bundler_rate`/`buys/sells` 等可能命名不同或缺失 → 避雷门/动能打分跑偏）；base/eth/robinhood 是否需按链配 launchpad 平台。**EVM 当前建议只作只读浏览，实盘前先查清 + 小额逐链验证。**
+- **Robinhood**（gmgn-cli 1.5.1 新增）：`market trending` / `portfolio stats` / `portfolio activity` / `portfolio created-tokens` / `token security` / `token info` 已用真实 API 逐一实测，字段结构与 bsc/base/eth 一致；原生币地址 `0x0` 实测确认为 ETH（18 位精度）。但 `cooking create`（发币）与 `track kol` / `track smartmoney` / `market signal` **gmgn-cli 官方文档标注暂不支持 robinhood**（本应用未用到这几个命令，不受影响）；`swap`/`order`/`gas-price` 虽然 `--chain robinhood` 可用，但官方 README 的 Chain Currencies 表未列出该链币种，**实盘前务必自行小额验证一次真实报价**。
 
 **待接入（代码里已标注，详见 SPEC §11）**
 - `LLMJudge.judge`：现为动能启发式占位，生产换真实 LLM（喂消毒后的 symbol_safe + 数值，绝不喂原始币名）。

@@ -100,8 +100,21 @@ cd /Users/chumeijuan/Documents/skillmarket-demos/aitrader
 - CSS 命名注意：钱包相关辅助函数/类避开了已有的 `fmtMc` 等全局名（曾因重名导致整段脚本语法错误）。
 
 ## 已知限制 / TODO
-- 钱包 Tab **依赖本地后端**（`/api/wallet`）。GitHub Pages 纯静态托管下会提示"需后端"，不像选币有纯前端 DEMO 数据。
-- EVM 链字段已实盘验证（2026-07-14，`gmgn-cli` 当前开放 sol/bsc/base/eth 四条链）：
+- 钱包 Tab **依赖本地后端**（`/api/wallet`）。GitHub Pages 纯静态托管 / DEMO 模式下连不上真后端时，点评估会
+  提示"需本地后端"，不发真实请求；`showWalletDemo()` 会自动填一个假地址 + 写死的示例结果，仅演示页面布局。
+- **[2026-07-17] 新增 robinhood 链**：`gmgn-cli` 1.5.1 新增支持，已升级本地 `gmgn-cli` 到 1.5.2 并实测验证：
+  `market trending`/`portfolio stats`/`portfolio activity`/`portfolio created-tokens`/`token security`/`token info`
+  六个命令在 robinhood 上返回的字段结构与 bsc/base/eth 完全一致；`token info --address 0x000...000` 实测确认
+  原生币是 ETH（18 位精度），故 `NATIVE_TOKEN`/`NATIVE_DECIMALS` 沿用与 bsc/base/eth 相同的 `0x0`+18 位约定。
+  **注意**：`cooking create`（发币）与 `track kol`/`track smartmoney`/`market signal` 官方文档标注暂不支持
+  robinhood（本应用未调用这几个命令，不受影响）；`swap`/`order`/`gas-price` 虽然 `--chain robinhood` 可用，
+  但官方 README 的 Chain Currencies 表没列出该链币种，真实下单前务必自己先跑一次小额验证。
+- **[2026-07-17] 修复：无真实交易记录的钱包被打出虚高分数**：GMGN `portfolio stats` 偶尔在 `trades=0`
+  （buy=sell=0，从没真实买卖过）时仍返回非零 `token_num`/`dist`（疑似把转入/空投持有的代币也计进去了），
+  照旧公式硬算会把"完全没数据"误判成"从不亏钱"，凑出一个看似正常实则毫无依据的高分。现在 `api_wallet`
+  （[app.py:1917](app.py#L1917)）检测到 `trades==0` 就直接跳过打分/回测，标签只给"❔无交易记录"，
+  真实战绩分/可跟单分前端显示"—"而不是数字，跟单回测栏也换成对应提示文案。
+- EVM 链字段已实盘验证（2026-07-14，`gmgn-cli` 当前开放 sol/bsc/base/eth/robinhood 五条链）：
   `portfolio stats`/`portfolio activity`/`portfolio created-tokens` 三个接口在 bsc/base/eth 上返回的字段名和结构
   与 sol 一致（`wallet_address`/`pnl_stat.*`/`common.*`/`activities[].token.total_supply`/`price_usd`/`gas_usd` 等），
   `/api/wallet` 端到端跑真实地址（vitalik.eth、Binance Hot Wallet 20 等）均 200，未见解析报错。

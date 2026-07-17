@@ -15,7 +15,7 @@ A separate position escape monitor flags rug signals and prompts a one-click exi
 - **Position escape monitor**: a safety snapshot is taken at entry and diff-rechecked each cycle (honeypot / renounce / top-10 concentration); once it degrades past the threshold an "exit now" prompt pops. Strictly separated from screening/risk-control — the LLM never touches the escape path.
 - **One-click buy / sell (human-in-the-loop)**: candidates that clear every gate land in "awaiting your decision"; a trade happens only when you click. A buy polls to confirm the real fill — on failure it records no position and does not lie; the fill carries a tx hash.
 - **LIVE / SHADOW**: one-click toggle (with second confirmation) between SHADOW (paper, default safe state, log-only) and LIVE (real funds, irreversible); the `LIVE_TRADING_DISABLED` master switch at the top of `app.py` can seal off all on-chain writes instantly.
-- **Multi-chain**: SOL / BSC / Base / ETH switched per-request, with per-chain adapter cache + short-cached trending and per-chain command/buy-unit memory; multiple tabs each hold their own chain without interfering.
+- **Multi-chain**: SOL / BSC / Base / ETH / Robinhood switched per-request, with per-chain adapter cache + short-cached trending and per-chain command/buy-unit memory; multiple tabs each hold their own chain without interfering.
 - **Persistence / isolation**: positions persist to disk (`positions.json`, survive restart) + per-chain isolation; every decision is appended to `trade_decisions.jsonl` (SCREEN/FILTER/BUY/SELL/UNMONITOR).
 - **Runs without a key**: the built-in `MockGMGN` adapter synthesizes isomorphic data, so you can fully demo/integrate without gmgn-cli or a key; with a key configured it switches to real market data on startup.
 - **GitHub Pages demo mode**: off localhost and with the backend unreachable, the frontend auto-enters DEMO mode (sample data + demo banner, zero API, zero key, cannot place orders).
@@ -40,9 +40,9 @@ Credentials are not in the project; they are written to your machine at runtime:
 
 ## Setup (one-time)
 1. Python 3.10+
-2. Only needed for LIVE / real market data: install `gmgn-cli` (verified against **1.3.9**; the 1.0.x interface is no longer compatible)
+2. Only needed for LIVE / real market data: install `gmgn-cli` (verified against **1.5.2**; the 1.0.x interface is no longer compatible; the robinhood chain needs ≥1.5.1)
    ```bash
-   npm install -g gmgn-cli@1.3.9
+   npm install -g gmgn-cli@1.5.2
    ```
 3. Only needed for LIVE / real market data: go to gmgn.ai/ai and apply for an API Key using your own Ed25519 public key + egress IP
    (the key is bound to the IP whitelist you applied with — each user uses their own, they cannot be shared)
@@ -70,7 +70,7 @@ Open http://127.0.0.1:8000 in your browser.
 ## Usage
 - Default Mock adapter + SHADOW mode: **runs without a key** (for integration testing).
 - With a key configured it connects to real market data automatically; the top-right gear lets you edit the trending command / poll interval per chain.
-- Top-right CHAIN dropdown switches **SOL / BSC / Base / ETH** (each tab keeps its own chain via sessionStorage, so multiple tabs don't interfere); the top-right **MODE icon toggles LIVE/SHADOW on click**.
+- Top-right CHAIN dropdown switches **SOL / BSC / Base / ETH / Robinhood** (each tab keeps its own chain via sessionStorage, so multiple tabs don't interfere); the top-right **MODE icon toggles LIVE/SHADOW on click**.
 - Candidates that pass all gates land in "awaiting your decision"; a trade happens only when you click "one-click buy".
 - Positions appear in the escape monitor on the right; once they degrade past the threshold (severity ≥ 70) an "exit now" prompt pops up.
 
@@ -100,7 +100,8 @@ The `created_token_count` field used to decide "is this a token dev" can still c
 
 **⚠ EVM chain screening looks buggy — only Solana is fully working today**
 - **Solana**: the full path — screen / buy / sell / position monitoring — is verified (including a real signed `order quote`).
-- **EVM (BSC / Base / ETH)**: the plumbing is wired (adapter / native token `0x0` / 18-decimal precision / wallet resolution / bsc's default fourmeme platform command all aligned to the authoritative table), but **screening results look wrong/incomplete and are not fully verified, and buy/sell has not been live-tested per chain**. Suspected issues: whether EVM `market trending` row fields match the Solana assumptions in `FeatureExtractor.build_from_row` / `hard_gates` (`is_honeypot`/`renounced_mint`/`bundler_rate`/`buys/sells` etc. may be named differently or be missing → mis-firing the rug gate / momentum scoring); whether base/eth need a per-chain launchpad platform. **For now EVM is recommended for read-only browsing only; before going live, investigate and verify with small amounts chain by chain.**
+- **EVM (BSC / Base / ETH / Robinhood)**: the plumbing is wired (adapter / native token `0x0` / 18-decimal precision / wallet resolution / bsc's default fourmeme platform command all aligned to the authoritative table), but **screening results look wrong/incomplete and are not fully verified, and buy/sell has not been live-tested per chain**. Suspected issues: whether EVM `market trending` row fields match the Solana assumptions in `FeatureExtractor.build_from_row` / `hard_gates` (`is_honeypot`/`renounced_mint`/`bundler_rate`/`buys/sells` etc. may be named differently or be missing → mis-firing the rug gate / momentum scoring); whether base/eth/robinhood need a per-chain launchpad platform. **For now EVM is recommended for read-only browsing only; before going live, investigate and verify with small amounts chain by chain.**
+- **Robinhood** (added in gmgn-cli 1.5.1): `market trending` / `portfolio stats` / `portfolio activity` / `portfolio created-tokens` / `token security` / `token info` have each been live-tested against the real API and match the bsc/base/eth field shapes; the `0x0` native-token address was confirmed to resolve to ETH (18 decimals). However `cooking create` (token launch) and `track kol` / `track smartmoney` / `market signal` **are explicitly documented as unsupported for robinhood** in gmgn-cli's own README (this app doesn't call those commands, so it's unaffected); `swap` / `order` / `gas-price` accept `--chain robinhood`, but the official README's Chain Currencies table doesn't list a currency for it — **verify a real quote with a small amount before going live**.
 
 **Pending integration (marked in code, see SPEC §11)**
 - `LLMJudge.judge`: currently a momentum-heuristic placeholder; in production swap in a real LLM (fed the sanitized `symbol_safe` + numeric features, never the raw token name).

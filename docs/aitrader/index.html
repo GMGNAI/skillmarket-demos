@@ -411,6 +411,7 @@ td{padding:5px 10px;vertical-align:middle}
           <div data-ch="bsc" onclick="switchChain('bsc')">BSC</div>
           <div data-ch="base" onclick="switchChain('base')">Base</div>
           <div data-ch="eth" onclick="switchChain('eth')">ETH</div>
+          <div data-ch="robinhood" onclick="switchChain('robinhood')">Robinhood</div>
         </div>
       </div>
       <div class="pill"><div><span class="k">P50 LAT</span><span class="v" id="lat">182ms</span></div></div>
@@ -910,8 +911,8 @@ function posIsAlert(p){
   return t.status!=='action';        // 在榜但非全绿（被某门砍）
 }
 /* ── 多链：单位 / 标签 / 本地存储 ── */
-const NATIVE_UNIT={sol:'SOL',bsc:'BNB',base:'ETH',eth:'ETH'};
-const CHAIN_LABEL={sol:'SOL',bsc:'BSC',base:'Base',eth:'ETH'};
+const NATIVE_UNIT={sol:'SOL',bsc:'BNB',base:'ETH',eth:'ETH',robinhood:'ETH'};
+const CHAIN_LABEL={sol:'SOL',bsc:'BSC',base:'Base',eth:'ETH',robinhood:'Robinhood'};
 const loadBuyAmt=ch=>{const v=parseFloat(localStorage.getItem('aitrader_buyamt_'+ch));return (isNaN(v)||v<0)?0.01:v;};
 function onAmt(el){let v=parseFloat(el.value);buyAmount=(isNaN(v)||v<0)?0:v;localStorage.setItem('aitrader_buyamt_'+curChain,buyAmount);renderRows();}
 function updateAmtUnit(){const u=document.getElementById('amtUnit');if(u)u.textContent=NATIVE_UNIT[curChain]||'SOL';}
@@ -1631,7 +1632,9 @@ const WLK={
     yes:'检出 ⚠', no:'未检出 ✓', none:'无',
     u_sec:' 秒', u_min:' 分', u_hr:' 小时', u_day:' 天',
     off:'钱包评估需要本地后端在运行（127.0.0.1:8000）。',
-    need_key:'本地后端还没配置 GMGN API Key，已为你打开配置窗口——填好 key 保存后再点一次评估。'},
+    need_key:'本地后端还没配置 GMGN API Key，已为你打开配置窗口——填好 key 保存后再点一次评估。',
+    no_trades_note:n=>`该地址没有真实买卖记录${n>0?`（链上持有 ${n} 个代币，但都不是交易得来的）`:''}，无法计算盈亏分布。`,
+    bt_no_trades:'该地址暂无真实交易记录，无法评估/回测。'},
   en:{need_addr:'Enter a wallet address', need_real_addr:'Enter a real wallet address to query', loading:'Querying…', fail:'Query failed',
     play:'Style', active:d=>`${d}d active`, fans:'X',
     s_pnl:'7D PnL', s_win:'Win rate', s_hold:'Avg hold', s_trades:'7D trades(b/s)', s_avg:'Avg/trade',
@@ -1656,7 +1659,9 @@ const WLK={
     yes:'found ⚠', no:'none ✓', none:'none',
     u_sec:'s', u_min:'m', u_hr:'h', u_day:'d',
     off:'Wallet eval needs the local backend running (127.0.0.1:8000).',
-    need_key:'The local backend has no GMGN API Key yet — opened the settings dialog for you. Save a key, then hit evaluate again.'}
+    need_key:'The local backend has no GMGN API Key yet — opened the settings dialog for you. Save a key, then hit evaluate again.',
+    no_trades_note:n=>`This address has no real buy/sell activity${n>0?` (it holds ${n} token(s) on-chain, none acquired by trading)`:''} — no PnL distribution to show.`,
+    bt_no_trades:'This address has no real trading history, so it can\'t be scored/backtested.'}
 };
 /* DEMO 模式下没有本地后端可查（GitHub Pages 纯静态托管同理），钱包评估给一份写死的示例结果，
    只为展示页面布局长什么样，地址是假的，数字也不代表任何真实钱包。选了一个「发币方+自产自销」的
@@ -1709,6 +1714,12 @@ function resetWalletView(){
   const a=document.getElementById('wltAddr');if(a)a.value='';
   const res=document.getElementById('wltResult');if(res)res.innerHTML='<div class="wlt-empty">'+t('wlt_empty')+'</div>';
 }
+/* 粗略按地址格式猜链：sol = base58 无 0x 前缀；bsc/base/eth 都是 0x+40 位十六进制，格式上分不出具体是哪条 */
+function detectAddrChain(a){
+  if(/^0x[0-9a-fA-F]{40}$/.test(a))return 'evm';
+  if(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a))return 'sol';
+  return null;
+}
 function switchView(v){
   curView=v; sessionStorage.setItem('aitrader_view',v);
   document.getElementById('tabToken').classList.toggle('on',v==='token');
@@ -1723,6 +1734,11 @@ async function runWallet(){
   const res=document.getElementById('wltResult');
   if(!addr){toast(WLK[lang].need_addr,'err');return;}
   if(addr===DEMO_WALLET_ADDR){toast(WLK[lang].need_real_addr,'err');return;}
+  // 地址格式跟当前链对不上就顺手切过去，别硬查报错——EVM 三链地址格式相同分不出具体是哪条，
+  // 只处理「sol ⇄ evm」这一档；已经在某条 evm 链上时保持不变，交易者自己用顶部 CHAIN 菜单挑 bsc/base/eth。
+  const det=detectAddrChain(addr);
+  if(det==='sol'&&curChain!=='sol')switchChain('sol');
+  else if(det==='evm'&&curChain==='sol')switchChain('bsc');
   if(wltBusy)return;wltBusy=true;
   const go=document.getElementById('wltGo');go.disabled=true;
   try{
@@ -1772,6 +1788,7 @@ function setFac(m){facMode=m;const box=document.getElementById('wfBox');if(box&&
 function facRows(){
   if(facMode==='dev')return devFacRows();
   const src=facMode==='track'?wltData.track:wltData.copy;
+  if(wltData.no_trades)return `<div class="wf-row"><div class="wf-note">${WLK[lang].bt_no_trades}</div></div>`;
   // 自产自销提示只在分数卡片那边统一露出一次（见 renderWallet），这里不重复
   return src.factors.map(f=>{const c=scoreCol(f.score);
     const nm=(lang==='en'&&f.name_en)?f.name_en:f.name, nt=(lang==='en'&&f.note_en)?f.note_en:f.note;
@@ -1839,6 +1856,7 @@ function btResHtml(b){
 
 function renderWallet(){
   const d=wltData,W=WLK[lang],st=d.stats,ac=d.activity;
+  const noTrades=!!d.no_trades;
   const nm=st.name||(d.address.slice(0,6)+'…'+d.address.slice(-4));
   const days=st.created_at>0?Math.round((Date.now()/1000-st.created_at)/86400):0;
   const dist=st.dist,tn=Math.max(1,st.token_num);
@@ -1896,8 +1914,10 @@ function renderWallet(){
       ${stat(W.s_flip,(ac.fast_flip_rate*100).toFixed(1)+'%',ac.fast_flip_rate>0.3?'var(--amber)':'')}
     </div>
     <div class="wh-dist">
-      <div class="wh-distbar">${distBar}</div>
-      <div class="wh-distleg">${W.dist} <b>${st.token_num} ${W.coins}</b>：>500% ${dist.gt_5} · 200–500% ${dist.x2_5} · 0–200% ${dist.x0_2} · −50–0% ${dist.n50_0} · <−50% ${dist.lt_n50}</div>
+      ${noTrades
+        ?`<div class="wh-distleg">${esc(W.no_trades_note(st.token_num))}</div>`
+        :`<div class="wh-distbar">${distBar}</div>
+      <div class="wh-distleg">${W.dist} <b>${st.token_num} ${W.coins}</b>：>500% ${dist.gt_5} · 200–500% ${dist.x2_5} · 0–200% ${dist.x0_2} · −50–0% ${dist.n50_0} · <−50% ${dist.lt_n50}</div>`}
     </div>
   </div>
 
@@ -1905,14 +1925,14 @@ function renderWallet(){
     <div class="wlt-scores"${d.chain==='base'?' style="grid-template-columns:1fr 1fr"':''}>
       <div class="wlt-card">
         <div class="ws-lbl">${W.trk}</div>
-        <div class="ws-num" style="color:${scoreCol(ts)}">${ts}<i>/100</i></div>
-        <div class="ws-track"><i style="width:${ts}%;background:${scoreCol(ts)}"></i></div>
+        <div class="ws-num" style="color:${noTrades?'var(--dim)':scoreCol(ts)}">${noTrades?'—':ts+'<i>/100</i>'}</div>
+        ${noTrades?'':`<div class="ws-track"><i style="width:${ts}%;background:${scoreCol(ts)}"></i></div>`}
         <div class="ws-sub">${W.trk_sub}</div>
       </div>
       <div class="wlt-card">
         <div class="ws-lbl">${W.cpy}</div>
-        <div class="ws-num" style="color:${scoreCol(cs)}">${cs}<i>/100</i></div>
-        <div class="ws-track"><i style="width:${cs}%;background:${scoreCol(cs)}"></i></div>
+        <div class="ws-num" style="color:${noTrades?'var(--dim)':scoreCol(cs)}">${noTrades?'—':cs+'<i>/100</i>'}</div>
+        ${noTrades?'':`<div class="ws-track"><i style="width:${cs}%;background:${scoreCol(cs)}"></i></div>`}
         <div class="ws-sub">${W.cpy_sub}</div>
       </div>
       ${devHtml}
@@ -1931,6 +1951,7 @@ function renderWallet(){
 
   <div class="wlt-card">
     <h4>${W.bt}</h4>
+    ${!bt?`<div class="wf-note">${W.bt_no_trades}</div>`:`
     <div class="wbt-formula">${W.bt_formula}</div>
     <div class="wbt">
       <div class="wbt-form">
@@ -1939,7 +1960,7 @@ function renderWallet(){
         <div class="wbt-sl"><label>${W.bt_gas} <b id="btGasV">${bt.gas_usd.toFixed(2)} $</b></label><input type="range" id="btGas" min="0" max="2" step="0.05" value="${bt.gas_usd}" oninput="btUpdate()"></div>
       </div>
       <div class="wbt-res" id="btRes">${btResHtml({wpct:bt.wallet_pct,cpct:bt.copy_pct,w7:bt.wallet_7d,c7:bt.copy_7d,trap:bt.trap})}</div>
-    </div>
+    </div>`}
   </div>`;
 
   const v=d.verdict||{tone:'ok',text:''};
