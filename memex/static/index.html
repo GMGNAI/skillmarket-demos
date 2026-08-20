@@ -1505,6 +1505,11 @@ var DICT = {
   '手工名单': 'Manual list', '永远优先预热': 'always warmed first',
   '加载中…': 'Loading…', '数据源': 'Data sources', '权重': 'Weights',
   '已复制 ✓': 'Copied ✓',
+  /* ── ca_audit 的 unknown 标签。这几个会被拼进「关键项未查到（…）」，
+        靠下面那条 'list' 型 pattern + subDict 逐个替换。 ── */
+  '蜜罐检测': 'honeypot check', 'LP 锁定状态': 'LP lock status',
+  'Dev 持仓': 'dev holdings', '狙击盘占比': 'sniper share',
+  'MemeX Agent · BSC 链上分析': 'MemeX Agent · On-chain Analysis for BSC',
   'Binance Alpha 催化剂': 'Binance Alpha catalyst',
   '有没有上 Alpha、上了多久、还在不在架上 —— 封顶加减分，不进加权平均':
     'Whether it listed on Alpha, how long ago, and whether it is still listed — '
@@ -1966,6 +1971,10 @@ var PATTERNS = [
   [/^源推互动 (.+)$/, 'Origin post engagement $1'],
   [/^源推互动仅 (\d+)$/, 'Origin post engagement only $1'],
   [/^(.+?) 数据缺失$/, '$1 data unavailable'],
+  /* 这一条是拼装出来的（`关键项未查到（${unknown.join('、')}），…`），
+     整句进不了词典。标 'list' 让括号里的项走 subDict 逐个替换。 */
+  [/^关键项未查到（(.+?)），不足以判断安全性$/,
+   'Key checks unavailable ($1) — not enough to judge safety', 'list'],
   [/^(\d+) 个数据源已就位$/, '$1 data sources ready'],
   [/^(.+?) \((.+?)\) · 持有人 ([\d,]+)$/, '$1 ($2) · $3 holders'],
   [/^安全审计 (\d+) 分 · (.+)$/, 'Contract audit $1 — $2'],
@@ -2076,6 +2085,9 @@ function subDict(text) {
     var k = _byLen[i];
     if (out.indexOf(k) >= 0) { out = out.split(k).join(DICT[k]); hit = true; }
   }
+  // 中文顿号在英文里应当是逗号。词典逐项替换完还留着「、」的话，
+  // 出来就是 `honeypot check、LP lock status` 这种中英混排。
+  if (hit) out = out.replace(/、/g, ', ');
   return hit ? out : null;
 }
 
@@ -2214,11 +2226,22 @@ function forget() {
   try { localStorage.removeItem('memex-lang'); } catch (e) {}
 }
 
+/* <title> 在 <head> 里，而 walk() 遍历的是 document.body —— 它永远碰不到标题。
+   结果是切成英文后浏览器标签页仍显示中文（英文版截图里发现的）。单独处理。 */
+var titleZh = null;
+function syncTitle() {
+  if (titleZh === null) titleZh = document.title;
+  if (current === 'zh') { document.title = titleZh; return; }
+  var out = DICT[titleZh.trim()];
+  if (out) document.title = out;
+}
+
 function setLang(lang) {
   var next = lang === 'en' ? 'en' : 'zh';
   if (next === current) return;
   if (next === 'zh') { current = 'zh'; restore(document.body); }
   else { current = 'en'; walk(document.body); }
+  syncTitle();
   document.documentElement.setAttribute('lang', LANGS[current]);
   try { localStorage.setItem('memex-lang', current); } catch (e) {}
   var b = document.getElementById('lang-btn');
@@ -7630,15 +7653,21 @@ R.x_narrative = function (d) {
 
   /* ── ① 全网讨论（主路，按讨论度排序）── */
   var sr = dd.search || {};
-  var stateNote = { fresh: '缓存命中', live: '实时 · ' + (sr.engine || ''),
+  /* engine 为空时不能留下悬空的「实时 · 」—— 词典是按整句匹配的，
+     `实时 ·` 这个带尾分隔符的串查不到词条，切英文后它会原样留在页面上
+     （英文截图里就是这么发现的）。所以有 engine 才拼分隔符。 */
+  var stateNote = { fresh: '缓存命中',
+    live: sr.engine ? '实时 · ' + sr.engine : '实时',
     stale: '旧缓存', queued: 'Bing 无结果，DDG 慢队列已接单',
     cooling: '搜索引擎冷却中' }[sr.state] || '';
   if ((sr.tweets || []).length) {
     sec.push(secTitle('全网讨论 · 讨论度 Top' + sr.tweets.length,
-      (sr.all_count ? sr.all_count + ' 条命中 · ' : '') + stateNote) +
+      (sr.all_count ? sr.all_count + ' 条命中' + (stateNote ? ' · ' : '') : '')
+      + stateNote) +
       sr.tweets.map(tweetHtml).join(''));
   } else {
-    sec.push(secTitle('全网讨论', (dd.window_hours || 24) + 'h 窗口内 0 条 · ' + stateNote));
+    sec.push(secTitle('全网讨论', (dd.window_hours || 24) + 'h 窗口内 0 条'
+      + (stateNote ? ' · ' + stateNote : '')));
   }
 
   /* ── ② 历史讨论：窗口外，但叙事高峰常在这里 ── */
